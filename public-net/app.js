@@ -15,6 +15,7 @@ let dealAnimRound = 0; // 发牌动画标记（每副首帧触发）
 let winHoldUntil = 0;   // 赢墩展示停顿截止时间
 let winHoldSeq = 0;     // 已展示的赢墩 seq
 let pendingState = null; // 停顿期间暂存的最新状态
+let winShown = false;    // 本墩赢牌是否已展示（避免重绘重复显示旧牌）
 
 const SUIT_SYM = { spade: '♠', heart: '♥', club: '♣', diamond: '♦', joker: '★' };
 const SEAT_EMOJI = ['🦊', '🐯', '🐼', '🦁', '🐸', '🐨'];
@@ -250,30 +251,37 @@ function renderGame() {
   if (game.phase === 'trick' && game.trick) {
     const dim = game.trick.dimension ? (DIM_LABEL[game.trick.dimension] || game.trick.dimension) : '';
     if (game.trick.leaderSeat != null && seats[game.trick.leaderSeat]) infoParts.push(seats[game.trick.leaderSeat].nickname + ' 领出' + (dim ? '（' + dim + '）' : ''));
-    (game.trick.plays || []).forEach((pl, pi) => {
-      const wrap = document.createElement('div');
-      wrap.className = 'play' + (pi === (game.trick.plays || []).length - 1 ? ' fresh' : '');
-      const who = seats[pl.seat] ? seats[pl.seat].nickname : ('玩家' + (pl.seat + 1));
-      const label = document.createElement('div');
-      label.className = 'playSeat';
-      label.textContent = who;
-      const cards = document.createElement('div');
-      cards.className = 'playCards';
-      (pl.cards || []).forEach((c) => cards.appendChild(makeCard(c)));
-      wrap.appendChild(label);
-      wrap.appendChild(cards);
-      trickCards.appendChild(wrap);
-    });
-    if (game.trick.winnerSeat != null) {
-      // 本墩已决出：牌飞向赢家
-      const [wx, wy] = winnerDir(game, game.trick.winnerSeat);
-      trickCards.classList.add('winning');
-      trickCards.style.setProperty('--win-x', wx + 'px');
-      trickCards.style.setProperty('--win-y', wy + 'px');
+    const winFrame = !!(game.trick.winnerSeat != null);
+    if (!winFrame) winShown = false;
+    if (winFrame) {
       const who = seats[game.trick.winnerSeat] ? seats[game.trick.winnerSeat].nickname : '?';
       trickResult.textContent = who + ' 赢墩' + (game.trick.pointsWon ? '，得 ' + game.trick.pointsWon + ' 分' : '');
       trickResult.classList.add('flash');
     }
+    // 赢墩牌面只展示一次；之后重绘（如点击选牌）不再重复显示上一轮牌
+    if (!(winFrame && winShown)) {
+      (game.trick.plays || []).forEach((pl, pi) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'play' + (pi === (game.trick.plays || []).length - 1 ? ' fresh' : '');
+        const who = seats[pl.seat] ? seats[pl.seat].nickname : ('玩家' + (pl.seat + 1));
+        const label = document.createElement('div');
+        label.className = 'playSeat';
+        label.textContent = who;
+        const cards = document.createElement('div');
+        cards.className = 'playCards';
+        (pl.cards || []).forEach((c) => cards.appendChild(makeCard(c)));
+        wrap.appendChild(label);
+        wrap.appendChild(cards);
+        trickCards.appendChild(wrap);
+      });
+      if (game.trick.winnerSeat != null) {
+        const [wx, wy] = winnerDir(game, game.trick.winnerSeat);
+        trickCards.classList.add('winning');
+        trickCards.style.setProperty('--win-x', wx + 'px');
+        trickCards.style.setProperty('--win-y', wy + 'px');
+      }
+    }
+    if (winFrame) winShown = true;
   }
   if (game.bottom && game.bottom.length) {
     const lab = document.createElement('div');
