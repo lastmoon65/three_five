@@ -36,7 +36,8 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       const file = normalize(join(root, path.slice(1)));
       if (!file.startsWith(root)) { res.writeHead(403); res.end('Forbidden'); return; }
       const data = await readFile(file);
-      res.writeHead(200, { 'Content-Type': MIME[extname(file).toLowerCase()] || 'application/octet-stream' });
+      // 禁止缓存：前端改版后刷新即可生效，避免手机旧样式残留
+      res.writeHead(200, { 'Content-Type': MIME[extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
       res.end(data);
     } catch {
       res.writeHead(404); res.end('Not Found');

@@ -256,3 +256,13 @@ button.suggest {
   #gameView.mode6 .playCards .card { width: 26px; height: 38px; }
   #gameView.mode6 #table .seat .card.mini { width: 15px; height: 22px; }
 }
+/* ---- 竖屏对局提示横屏 ---- */
+#rotatePrompt {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(10, 30, 18, 0.97);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  text-align: center;
+}
+#rotatePrompt .rotIcon { font-size: 60px; color: #ffd76a; animation: rotSpin 1.6s ease-in-out infinite; }
+@keyframes rotSpin { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(90deg); } }
+#rotatePrompt p { font-size: 18px; color: #ffe3a3; }

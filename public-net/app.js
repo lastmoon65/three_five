@@ -88,6 +88,15 @@ function showRoom() {
   $('roomView').classList.remove('hidden');
 }
 
+// 竖屏且在对局中：提示横屏游玩
+function updateRotatePrompt() {
+  const inGame = !document.getElementById('gameView').classList.contains('hidden');
+  const portrait = window.innerHeight > window.innerWidth;
+  document.getElementById('rotatePrompt').classList.toggle('hidden', !(portrait && inGame));
+}
+window.addEventListener('resize', updateRotatePrompt);
+window.addEventListener('orientationchange', () => setTimeout(updateRotatePrompt, 200));
+
 function renderOnline(online) {
   const ul = $('onlineList');
   ul.innerHTML = '';
@@ -208,6 +217,7 @@ function renderGame() {
   $('hallView').classList.add('hidden');
   $('roomView').classList.add('hidden');
   $('gameView').classList.remove('hidden');
+  updateRotatePrompt();
   $('gRound').textContent = game.roundNo ?? 1;
   $('gPhase').textContent = PHASE_LABEL[game.phase] || game.phase;
   const seats = game.seats || [];
