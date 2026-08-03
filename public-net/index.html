@@ -23,33 +23,48 @@
         <span>欢迎，<b id="me"></b></span>
         <button id="logoutBtn" class="ghost">退出</button>
       </header>
-      <section class="card">
-        <h3>在线玩家</h3>
-        <ul id="onlineList"></ul>
-      </section>
       <section class="actions">
         <button id="createRoomBtn">创建房间</button>
         <button id="joinRoomBtn">加入房间</button>
       </section>
-      <section id="joinPanel" class="card hidden">
+      <section id="joinPanel" class="panel hidden">
         <input id="joinRoomInput" placeholder="6 位房间号" inputmode="numeric" maxlength="6">
         <button id="joinConfirmBtn">加入</button>
         <button id="joinCancelBtn" class="ghost">取消</button>
       </section>
       <p class="tip">4 人坐满并全部准备后，房主可开始游戏</p>
+      <section class="panel">
+        <h3>在线玩家</h3>
+        <ul id="onlineList"></ul>
+      </section>
     </div>
 
     <div id="gameView" class="hidden">
       <header class="hallHead">
         <span>第 <b id="gRound"></b> 副 · <span id="gPhase"></span></span>
+        <span id="gScore"></span>
+        <button id="gLeaveBtn" class="ghost">退出房间</button>
         <button id="gResetBtn" class="ghost">重置</button>
       </header>
-      <div id="gDealer"></div>
-      <div id="opponents"></div>
-      <div id="gCenter"></div>
-      <div id="gHand"></div>
-      <div id="gButtons"></div>
-      <p class="tip" id="gMsg"></p>
+      <div id="table">
+        <div id="seatTop" class="seat opponent"></div>
+        <div id="seatLeft" class="seat opponent"></div>
+        <section id="trick">
+          <div id="trickInfo"></div>
+          <div id="trickCards"></div>
+          <div id="trickResult"></div>
+          <div id="bottomBar"></div>
+        </section>
+        <div id="seatRight" class="seat opponent"></div>
+      </div>
+      <section id="handArea">
+        <div id="handTitle"></div>
+        <div id="handCards"></div>
+        <div id="actionBar">
+          <div id="hint"></div>
+          <div id="buttons"></div>
+        </div>
+      </section>
     </div>
 
     <div id="roomView" class="hidden">

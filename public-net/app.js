@@ -77,6 +77,61 @@ function toggleHandSel(id, maxSel) {
   renderGame();
 }
 
+function makeCard(c, extra) {
+  const d = document.createElement('div');
+  d.className = 'card ' + ((c.suit === 'heart' || c.suit === 'diamond' || c.suit === 'joker') ? 'red' : 'black');
+  if (c.suit === 'joker') d.classList.add('joker');
+  if (c.points > 0) { d.classList.add('scoring'); d.dataset.pts = c.points; }
+  if (extra) d.classList.add(extra);
+  const r = document.createElement('div'); r.className = 'cRank';
+  r.textContent = c.suit === 'joker' ? (String(c.rank).includes('big') ? '大' : '小') : String(c.rank);
+  const s = document.createElement('div'); s.className = 'cSuit';
+  s.textContent = c.suit === 'joker' ? '★' : (SUIT_SYM[c.suit] || '');
+  d.appendChild(r); d.appendChild(s);
+  return d;
+}
+
+function renderSeat(el, idx) {
+  el.innerHTML = '';
+  const s = game.seats && game.seats[idx];
+  const actorSeat = game.phase === 'reveal' ? game.revealActor : game.currentSeat;
+  const n = s ? (game.handCounts[idx] ?? 0) : 0;
+  const name = document.createElement('div');
+  name.className = 'seatName' + (idx === actorSeat ? ' current' : '');
+  name.textContent = s ? s.nickname : '空位';
+  el.appendChild(name);
+  const info = document.createElement('div');
+  info.className = 'seatInfo';
+  const parts = [n + ' 张'];
+  if (game.dealerIndex === idx) parts.push('庄家');
+  if (s && idx % 2 === game.me % 2) parts.push('队友');
+  if (s && !s.connected) parts.push('离线');
+  if (game.effectiveReveal && game.effectiveReveal.seat === idx) parts.push('已亮' + (game.effectiveReveal.level === 'wu' ? '五反' : '三反'));
+  info.textContent = parts.join(' · ');
+  el.appendChild(info);
+  const backs = document.createElement('div');
+  backs.className = 'backs';
+  const show = Math.min(n, 8);
+  for (let i = 0; i < show; i++) {
+    const b = document.createElement('div');
+    b.className = 'card back';
+    backs.appendChild(b);
+  }
+  if (n > show) {
+    const more = document.createElement('span');
+    more.className = 'more';
+    more.textContent = '+' + (n - show);
+    backs.appendChild(more);
+  }
+  el.appendChild(backs);
+  if (idx === actorSeat) {
+    const badge = document.createElement('div');
+    badge.className = 'turnBadge';
+    badge.textContent = game.phase === 'reveal' ? '亮牌中' : (game.phase === 'bury' ? '埋底中' : (game.phase === 'tribute' ? '退贡中' : '出牌中'));
+    el.appendChild(badge);
+  }
+}
+
 function renderGame() {
   if (!game) return;
   $('loginView').classList.add('hidden');
@@ -86,38 +141,77 @@ function renderGame() {
   $('gRound').textContent = game.roundNo ?? 1;
   $('gPhase').textContent = PHASE_LABEL[game.phase] || game.phase;
   const seats = game.seats || [];
-  const dealer = game.dealerIndex != null ? seats[game.dealerIndex] : null;
-  $('gDealer').textContent = dealer ? '庄家：' + dealer.nickname + (game.rebellion ? '（造反成立，本副免进贡）' : '') : '';
-  const opp = $('opponents');
-  opp.innerHTML = '';
-  seats.forEach((seat, i) => {
-    if (!seat || seat.seatId === game.me) return;
-    const div = document.createElement('div');
-    div.className = 'oppRow';
-    div.textContent = (seat.seatId + 1) + '号位 · ' + seat.nickname + ' · ' + (game.handCounts[i] ?? 0) + ' 张';
-    if (i === game.dealerIndex) div.textContent += '（庄家）';
-    if (!seat.connected) div.textContent += '（离线）';
-    if (game.revealActor === i && game.phase === 'reveal') div.textContent += ' ← 行动中';
-    opp.appendChild(div);
-  });
+  const me = game.me;
+  if (game.scores && game.scores.length === 2 && game.dealerIndex != null) {
+    const dTeam = game.dealerIndex % 2;
+    $('gScore').textContent = '我队 ' + game.scores[dTeam] + ' : ' + game.scores[1 - dTeam] + ' 对方';
+  } else $('gScore').textContent = '';
+  renderSeat($('seatTop'), (me + 2) % 4);
+  renderSeat($('seatLeft'), (me + 1) % 4);
+  renderSeat($('seatRight'), (me + 3) % 4);
+  const trickCards = $('trickCards');
+  const trickResult = $('trickResult');
+  const bottomBar = $('bottomBar');
+  trickCards.innerHTML = '';
+  trickResult.textContent = '';
+  trickResult.classList.remove('flash');
+  bottomBar.innerHTML = '';
+  const infoParts = [];
+  if (game.lastGive) {
+    const who = seats[game.lastGive.to] ? seats[game.lastGive.to].nickname : '?';
+    infoParts.push(who + ' 进贡 ' + cardLabel(game.lastGive.card));
+  }
+  if (game.phase === 'reveal') infoParts.push('亮牌阶段：三张3=三反 / 三张5=五反，闲家亮出可造反');
+  if (game.phase === 'trick' && game.trick) {
+    const dim = game.trick.dimension ? (DIM_LABEL[game.trick.dimension] || game.trick.dimension) : '';
+    if (game.trick.leaderSeat != null && seats[game.trick.leaderSeat]) infoParts.push(seats[game.trick.leaderSeat].nickname + ' 领出' + (dim ? '（' + dim + '）' : ''));
+    (game.trick.plays || []).forEach((pl) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'play';
+      const who = seats[pl.seat] ? seats[pl.seat].nickname : ('玩家' + (pl.seat + 1));
+      const label = document.createElement('div');
+      label.className = 'playSeat';
+      label.textContent = who;
+      const cards = document.createElement('div');
+      cards.className = 'playCards';
+      (pl.cards || []).forEach((c) => cards.appendChild(makeCard(c)));
+      wrap.appendChild(label);
+      wrap.appendChild(cards);
+      trickCards.appendChild(wrap);
+    });
+    if (game.trick.winnerSeat != null) {
+      const who = seats[game.trick.winnerSeat] ? seats[game.trick.winnerSeat].nickname : '?';
+      trickResult.textContent = who + ' 赢墩' + (game.trick.pointsWon ? '，得 ' + game.trick.pointsWon + ' 分' : '');
+      trickResult.classList.add('flash');
+    }
+  }
+  if (game.bottom && game.bottom.length) {
+    const lab = document.createElement('div');
+    lab.className = 'bottomLabel';
+    lab.textContent = '底牌（公开）';
+    const row = document.createElement('div');
+    row.className = 'bottomCards';
+    game.bottom.forEach((c) => row.appendChild(makeCard(c)));
+    bottomBar.appendChild(lab);
+    bottomBar.appendChild(row);
+  }
+  $('trickInfo').textContent = infoParts.join(' | ');
   const p = game.phase;
-  const myTurnTake = p === 'tribute' && game.tributeState && game.tributeState.step === 'take' && game.currentSeat === game.me;
-  const myTurnBury = p === 'bury' && game.currentSeat === game.me;
-  const myTurnPlay = p === 'trick' && game.currentSeat === game.me;
+  const myTurnTake = p === 'tribute' && game.tributeState && game.tributeState.step === 'take' && game.currentSeat === me;
+  const myTurnBury = p === 'bury' && game.currentSeat === me;
+  const myTurnPlay = p === 'trick' && game.currentSeat === me;
   const interactive = myTurnTake || myTurnBury || myTurnPlay;
   const maxSel = myTurnBury ? 6 : (myTurnPlay ? ((game.playHints && game.playHints.count) ? game.playHints.count : 12) : 1);
   const key = p + ':' + game.currentSeat + ':' + (game.tributeState ? game.tributeState.step + '/' + game.tributeState.pairIdx : '-') + ':' + (game.trick ? game.trick.plays.length : '-');
   if (key !== handKey) { handSel = []; handKey = key; }
+  $('handTitle').textContent = (seats[me] ? seats[me].nickname : '我') + ' 的手牌（' + (game.myHand || []).length + ' 张）' + (interactive ? ' · 轮到你了' : '');
   const takeSet = new Set(game.takeOptions || []);
   const allowedSet = new Set((game.playHints && game.playHints.allowed) || []);
   const kongIds = new Set((game.kongPlays || []).flatMap((k) => k.cardIds || []));
-  const handEl = $('gHand');
+  const handEl = $('handCards');
   handEl.innerHTML = '';
   (game.myHand || []).slice().sort((x, y) => y.power - x.power).forEach((c) => {
-    const d = document.createElement('div');
-    d.className = 'card ' + ((c.suit === 'heart' || c.suit === 'diamond' || c.suit === 'joker') ? 'red' : 'black');
-    d.textContent = cardLabel(c);
-    if (c.points > 0) d.classList.add('scoring');
+    const d = makeCard(c);
     if (handSel.includes(c.id)) d.classList.add('selected');
     if (kongIds.has(c.id)) d.classList.add('suggested');
     if (interactive) {
@@ -135,42 +229,10 @@ function renderGame() {
     }
     handEl.appendChild(d);
   });
-  const center = $('gCenter');
-  center.innerHTML = '';
-  const centerParts = [];
-  if (game.lastGive) {
-    const who = game.seats[game.lastGive.to] ? game.seats[game.lastGive.to].nickname : '?';
-    centerParts.push(who + ' 进贡 ' + cardLabel(game.lastGive.card));
-  }
-  if (game.bottom && game.bottom.length) {
-    centerParts.push('底牌（公开）：' + game.bottom.map(cardLabel).join(' '));
-  }
-  if (game.trick && game.trick.plays && game.trick.plays.length) {
-    const dim = game.trick.dimension ? '（' + (DIM_LABEL[game.trick.dimension] || game.trick.dimension) + '）' : '';
-    const who = game.trick.leaderSeat != null && seats[game.trick.leaderSeat] ? seats[game.trick.leaderSeat].nickname : '';
-    const parts = game.trick.plays.map((pl) => {
-      const n = seats[pl.seat] ? seats[pl.seat].nickname : ('玩家' + (pl.seat + 1));
-      const cards = (pl.cards || []).map(cardLabel).join(' ') || ((pl.cardIds || []).length + ' 张');
-      return n + ':' + cards;
-    });
-    centerParts.push('领出 ' + who + dim + ' | ' + parts.join('  '));
-  }
-  if (game.effectiveReveal) {
-    const who = game.effectiveReveal.seat != null && seats[game.effectiveReveal.seat] ? seats[game.effectiveReveal.seat].nickname : '?';
-    centerParts.push(who + ' 亮出：' + (game.effectiveReveal.level === 'wu' ? '五反' : '三反'));
-  }
-  if (game.phase === 'reveal') {
-    centerParts.push('亮牌阶段：亮出三张3（三反）或三张5（五反）可提升牌力，闲家亮出可造反');
-  }
-  if (game.phase === 'round_end' && game.result) {
-    const r = game.result;
-    const dTeam = game.dealerIndex % 2;
-    centerParts.push('庄家方 ' + r.scores[dTeam] + ' 分 : ' + r.scores[1 - dTeam] + ' 分 闲家方' + (r.dealerStay ? ' · 守庄' : ' · 换庄') + (r.tribute !== 'none' ? ' · 进贡:' + r.tribute : ''));
-  }
-  center.textContent = centerParts.join(' | ');
-  const btns = $('gButtons');
+  const btns = $('buttons');
   btns.innerHTML = '';
-  if (game.phase === 'reveal' && game.revealActor === game.me) {
+  $('hint').textContent = game.message || '';
+  if (game.phase === 'reveal' && game.revealActor === me) {
     (game.revealOptions || []).forEach((o) => {
       const b = document.createElement('button');
       b.textContent = '✨ ' + (o.level === 'wu' ? '亮五反' : '亮三反');
@@ -234,8 +296,12 @@ function renderGame() {
     b.textContent = '下一副';
     b.addEventListener('click', () => send({ type: 'next_round' }));
     btns.appendChild(b);
+    if (game.result) {
+      const r = game.result;
+      const dTeam = game.dealerIndex % 2;
+      trickResult.textContent = '庄家方 ' + r.scores[dTeam] + ' : ' + r.scores[1 - dTeam] + ' 闲家方' + (r.dealerStay ? ' · 守庄' : ' · 换庄') + (r.tribute !== 'none' ? ' · 进贡:' + r.tribute : '');
+    }
   }
-  $('gMsg').textContent = game.message || '';
 }
 
 function renderRoom() {
@@ -298,6 +364,10 @@ function handle(msg) {
     game = null;
     $('connMsg').textContent = '房间已解散，返回大厅';
     showHall();
+  } else if (msg.type === 'left_room') {
+    room = null;
+    game = null;
+    showHall();
   } else if (msg.type === 'kicked') {
     token = null;
     localStorage.removeItem(TOKEN_KEY);
@@ -305,7 +375,15 @@ function handle(msg) {
     if (ws) ws.close();
     showLogin('该账号已在别处登录，你已被顶下线');
   } else if (msg.type === 'error') {
-    $('connMsg').textContent = d.message || '出错';
+    if (d.code === 'AUTH_FAIL' && token) {
+      token = null;
+      localStorage.removeItem(TOKEN_KEY);
+      myName = null;
+      if (ws) { try { ws.close(); } catch {} }
+      showLogin('登录已失效（服务器可能重启过），请重新登录');
+    } else {
+      $('connMsg').textContent = d.message || '出错';
+    }
   }
 }
 
@@ -357,6 +435,7 @@ $('readyBtn').addEventListener('click', () => send({ type: 'ready' }));
 $('leaveRoomBtn').addEventListener('click', () => send({ type: 'leave_room' }));
 $('startGameBtn').addEventListener('click', () => send({ type: 'start_game' }));
 $('gResetBtn').addEventListener('click', () => location.reload());
+$('gLeaveBtn').addEventListener('click', () => send({ type: 'leave_room' }));
 $('swapBtn').addEventListener('click', () => send({ type: 'swap_seats', data: { a: 2, b: 3 } }));
 $('copyRoomBtn').addEventListener('click', () => {
   if (navigator.clipboard && room) navigator.clipboard.writeText(room.roomId).then(() => $('connMsg').textContent = '房号已复制');

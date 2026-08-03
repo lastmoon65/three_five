@@ -4,7 +4,7 @@
 const RANKS = ['3','4','5','6','7','8','9','10','J','Q','K','A','2'];
 const SUITS = ['spade','heart','club','diamond'];
 const POINT_MAP = { '5':5, '10':10, 'K':10 };
-const RANK_VALUE = { '3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14,'2':15 };
+export const RANK_VALUE = { '3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14,'2':15 };
 const HEART_MAIN_POWER = { A:214,K:213,Q:212,'10':210,'9':209,'8':208,'7':207,'6':206,'5':205,'4':204,'3':203 };
 const SUB_POWER = { A:114,K:113,Q:112,'10':110,'9':109,'8':108,'7':107,'6':106,'5':105,'4':104,'3':103 };
 
@@ -51,7 +51,7 @@ export function followSuit(c) {
   return c.suit;
 }
 
-function sameRank(cards) { return cards.length > 0 && cards.every(c => c.rank === cards[0].rank); }
+export function sameRank(cards) { return cards.length > 0 && cards.every(c => c.rank === cards[0].rank); }
 
 export function newGame(names, rng) { return new Game(names, rng); }
 
@@ -80,6 +80,7 @@ export class Game {
     this.result = null;
     this.rebellion = false;
     this.lastGive = null;
+    this.tributed = new Set();
     this.autoBury = null;
   }
 
@@ -105,6 +106,7 @@ export class Game {
     this.result = null;
     this.rebellion = false;
     this.lastGive = null;
+    this.tributed = new Set();
     this.autoBury = null;
     this.buriedBy = null;
     this.phase = 'reveal';
@@ -133,6 +135,11 @@ export class Game {
   handScoring(seat) { return this.hands[seat].filter(c => c.points > 0); }
   handSub(seat) { return this.hands[seat].filter(c => !(isMain(c) || this.isRevealed(c))); }
   handFollow(seat, cat) { return this.hands[seat].filter(c => followSuit(c) === cat); }
+
+  // 贡牌（进贡/退贡交换的牌）不得组成真杠/假杠/四清
+  isKongable(cards) {
+    return cards.length === 4 && sameRank(cards) && !cards.some(c => this.tributed.has(c.id));
+  }
 
   // ---------- 亮牌 ----------
   legalReveals() {
@@ -201,6 +208,7 @@ export class Game {
     for (const c of hand) if (this.powerOf(c) > this.powerOf(best)) best = c;
     this.hands[p.giver] = hand.filter(c => c !== best);
     this.hands[p.taker].push(best);
+    this.tributed.add(best.id);
     this.lastGive = { from: p.giver, to: p.taker, cardId: best.id };
     st.step = 'take';
     this.currentSeat = p.taker;
@@ -218,6 +226,7 @@ export class Game {
     if (mains.length > 0 && !(isMain(card) || this.isRevealed(card))) throw new Error('NEED_MAIN_CARD');
     this.hands[p.taker] = this.hands[p.taker].filter(c => c !== card);
     this.hands[p.giver].push(card);
+    this.tributed.add(card.id);
     st.pairIdx++;
     if (st.pairIdx >= st.pairs.length) this.enterBury();
     else { st.step = 'give'; this.currentSeat = st.pairs[st.pairIdx].giver; }
@@ -266,12 +275,12 @@ export class Game {
     const cards = cardIds.map(id => this.cardById(id));
     const n = cards.length;
     if (n === 1) return { ok: true, dimension: 'single' };
-    if (n === 4 && sameRank(cards)) return { ok: true, dimension: cards[0].rank === '4' ? 'four_clear' : 'true_kong' };
+    if (n === 4 && this.isKongable(cards)) return { ok: true, dimension: cards[0].rank === '4' ? 'four_clear' : 'true_kong' };
     if (n === 4) {
       const q = cards.find(c => c.id === 'spade_Q');
-      if (q) {
+      if (q && !this.tributed.has(q.id)) {
         const rest = cards.filter(c => c.id !== 'spade_Q');
-        if (rest.length === 3 && sameRank(rest)) return { ok: true, dimension: 'fake_kong' };
+        if (rest.length === 3 && sameRank(rest) && !rest.some(c => this.tributed.has(c.id))) return { ok: true, dimension: 'fake_kong' };
       }
       return { ok: false, reason: 'BAD_LEAD' };
     }
@@ -318,7 +327,7 @@ export class Game {
       return this.throwResponseOk(cards);
     }
     if (dim === 'fake_kong') {
-      if (sameRank(cards)) return true;
+      if (sameRank(cards) && !cards.some(c => this.tributed.has(c.id))) return true;
       if (this.hands[this.currentSeat].length < 4) return cards.length === this.hands[this.currentSeat].length;
       if (cards.length !== 4) return false;
       const handSub = this.handSub(this.currentSeat).length;
@@ -376,9 +385,9 @@ export class Game {
       const mains = this.handMain(seat).slice().sort((a, b) => (this.powerOf(b) - this.powerOf(a)) || a.id.localeCompare(b.id));
       for (let n = 2; n <= mains.length; n++) out.push({ cardIds: mains.slice(0, n).map(c => c.id), dimension: 'throw' });
       const q = hand.find(c => c.id === 'spade_Q');
-      if (q) {
+      if (q && !this.tributed.has(q.id)) {
         const byRank = {};
-        for (const c of hand) if (c.id !== 'spade_Q') (byRank[c.rank] ||= []).push(c);
+        for (const c of hand) if (c.id !== 'spade_Q' && !this.tributed.has(c.id)) (byRank[c.rank] ||= []).push(c);
         for (const list of Object.values(byRank)) {
           if (list.length < 3) continue;
           for (const three of combosOf(list, 3)) out.push({ cardIds: [q.id, ...three.map(c => c.id)], dimension: 'fake_kong' });
@@ -387,7 +396,7 @@ export class Game {
       const byRank = {};
       for (const c of hand) (byRank[c.rank] ||= []).push(c);
       for (const list of Object.values(byRank)) {
-        if (list.length === 4) out.push({ cardIds: list.map(c => c.id), dimension: list[0].rank === '4' ? 'four_clear' : 'true_kong' });
+        if (list.length === 4 && !list.some(c => this.tributed.has(c.id))) out.push({ cardIds: list.map(c => c.id), dimension: list[0].rank === '4' ? 'four_clear' : 'true_kong' });
       }
       return dedupe(out);
     }
@@ -514,7 +523,7 @@ export class Game {
   resolveKong(plays) {
     const kongs = plays.map((p, i) => {
       const cards = p.cardIds.map(id => this.cardById(id));
-      return sameRank(cards) && cards.length === 4 ? { i, rank: cards[0].rank } : null;
+      return this.isKongable(cards) ? { i, rank: cards[0].rank } : null;
     }).filter(Boolean);
     if (kongs.length === 0) return plays[0].seat;
     let best = kongs[0];
@@ -586,7 +595,7 @@ export class Game {
   }
 }
 
-function combosOf(arr, k) {
+export function combosOf(arr, k) {
   const out = [];
   if (k < 0 || k > arr.length) return out;
   const idx = [];
@@ -602,7 +611,7 @@ function combosOf(arr, k) {
   return out;
 }
 
-function dedupe(list) {
+export function dedupe(list) {
   const seen = new Set();
   const out = [];
   for (const item of list) {

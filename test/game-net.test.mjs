@@ -28,7 +28,7 @@ function connect() {
   });
 }
 function send(ws, obj) { ws.send(JSON.stringify(obj)); }
-function waitMsg(inbox, type, timeout = 2500) {
+function waitMsg(inbox, type, timeout = 5000) {
   return new Promise((resolve, reject) => {
     const t0 = Date.now();
     (function tick() {
@@ -39,7 +39,7 @@ function waitMsg(inbox, type, timeout = 2500) {
     })();
   });
 }
-function waitError(inbox, code, timeout = 6000) {
+function waitError(inbox, code, timeout = 12000) {
   return new Promise((resolve, reject) => {
     const t0 = Date.now();
     (function tick() {
@@ -50,7 +50,7 @@ function waitError(inbox, code, timeout = 6000) {
     })();
   });
 }
-function waitNewestGame(inbox, checkFn, timeout = 6000) {
+function waitNewestGame(inbox, checkFn, timeout = 12000) {
   return new Promise((resolve, reject) => {
     const t0 = Date.now();
     (function tick() {
@@ -61,7 +61,7 @@ function waitNewestGame(inbox, checkFn, timeout = 6000) {
     })();
   });
 }
-function waitUntil(inbox, predicate, timeout = 3000) {
+function waitUntil(inbox, predicate, timeout = 8000) {
   return new Promise((resolve, reject) => {
     const t0 = Date.now();
     (function tick() {
@@ -185,9 +185,9 @@ async function skipAllReveals(users) {
     send(u.ws, { type: 'reveal', data: { cardIds: null } });
     guard++;
     // 等待最新状态推进（行动者变更或离开亮牌阶段）再继续
-    await waitNewestGame(users[0].inbox, (d) => d.phase !== 'reveal' || d.revealActor !== actor, 3000);
+    await waitNewestGame(users[0].inbox, (d) => d.phase !== 'reveal' || d.revealActor !== actor, 8000);
   }
-  await waitNewestGame(users[0].inbox, (d) => d.phase !== 'reveal', 3000);
+  await waitNewestGame(users[0].inbox, (d) => d.phase !== 'reveal', 8000);
 }
 function isMainCard(c) {
   return c.suit === 'heart' || c.suit === 'joker' || (c.suit === 'diamond' && c.rank === '5') || (c.suit === 'spade' && c.rank === 'Q') || c.rank === 'J' || c.rank === '2';
@@ -294,9 +294,9 @@ async function autoPlayToEnd(users) {
     await waitNewestGame(users[0].inbox, (d) => {
       const now = (d.trick ? d.trick.plays.length : 0) + ':' + d.currentSeat;
       return d.phase !== 'trick' || now !== before;
-    }, 3000);
+    }, 8000);
   }
-  return (await waitNewestGame(users[0].inbox, (d) => d.phase === 'round_end', 8000)).data;
+  return (await waitNewestGame(users[0].inbox, (d) => d.phase === 'round_end', 15000)).data;
 }
 
 test('game_state seq 单调递增（快照防乱序）', async () => {

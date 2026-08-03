@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { ACCOUNTS } from './config.mjs';
 import { Game } from './game/game.mjs';
+import { Game6 } from './game/game6.mjs';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -77,6 +78,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
   function roomDTO(room) {
     return {
       roomId: room.roomId,
+      mode: room.mode || 'p4',
       phase: room.phase,
       hostSeatId: room.hostSeatId,
       seats: room.seats.map((s) => seatDTO(room, s)),
@@ -94,9 +96,13 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
     const s = sessions.get(username);
     if (s && s.ws) send(s.ws, { type: 'room_updated', data: roomDTO(room) });
   }
-  function genRoomId() {
+  function genRoomId(mode) {
+    const len = mode === 'p6' ? 6 : 4;
     let id;
-    do { id = String(Math.floor(100000 + Math.random() * 900000)); } while (rooms.has(id));
+    do {
+      id = '';
+      for (let i = 0; i < len; i++) id += String(Math.floor(Math.random() * 10));
+    } while (rooms.has(id));
     return id;
   }
   function dissolveRoom(room, reason) {
@@ -108,20 +114,26 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       if (s && s.ws) send(s.ws, { type: 'room_dissolved', data: { roomId: room.roomId, reason } });
     }
   }
+  function sendLeft(username, roomId) {
+    const s = sessions.get(username);
+    if (s && s.ws) send(s.ws, { type: 'left_room', data: { roomId: roomId || null } });
+  }
   function leaveRoom(username) {
     const roomId = userRoom.get(username);
-    if (!roomId) return;
+    if (!roomId) { sendLeft(username, null); return; }
     const room = rooms.get(roomId);
-    if (!room) { userRoom.delete(username); return; }
+    if (!room) { userRoom.delete(username); sendLeft(username, roomId); return; }
     const idx = room.seats.findIndex((s) => s && s.username === username);
     userRoom.delete(username);
-    if (idx < 0) return;
-    if (room.hostSeatId === idx) {
-      dissolveRoom(room, 'HOST_LEFT');
+    if (idx < 0) { sendLeft(username, roomId); return; }
+    // 游戏进行中任何人退出 → 本局作废、房间解散；等待阶段：房主退出解散，非房主清座
+    if (room.phase === 'playing' || room.hostSeatId === idx) {
+      dissolveRoom(room, room.hostSeatId === idx ? 'HOST_LEFT' : 'GAME_LEFT');
       return;
     }
     room.seats[idx] = null;
     broadcastRoom(room);
+    sendLeft(username, roomId);
   }
 
   /* ---------- 对局 ---------- */
@@ -157,7 +169,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       const seen = new Set();
       for (const p of legalPlays) {
         const cards = p.cardIds.map((id) => g.cardById(id));
-        const isKong = p.dimension === 'four_clear' || (cards.length === 4 && cards.every((c) => c.rank === cards[0].rank)) || (p.dimension === 'fake_kong' && cards.some((c) => c.id === 'spade_Q'));
+        const isKong = p.dimension === 'four_clear' || (cards.length === 4 && cards.every((c) => c.rank === cards[0].rank)) || (p.dimension === 'fake_kong' && cards.some((c) => c.suit === 'spade' && c.rank === 'Q'));
         if (!isKong) continue;
         const key = p.cardIds.slice().sort().join(',');
         if (seen.has(key)) continue;
@@ -170,24 +182,24 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
     }
     let message;
     if (s.phase === 'reveal') {
-      const who = revealActor != null && room.seats[revealActor] ? room.seats[revealActor].nickname : '?';
+      const who = revealActor != null && room.seats[revealActor] ? (NICK.get(room.seats[revealActor].username) || room.seats[revealActor].username) : '?';
       message = revealActor === seatIdx ? '轮到你了：选择亮牌或跳过' : '等待 ' + who + ' 亮牌';
     } else if (s.phase === 'tribute') {
       const st = s.tributeState;
       if (st && st.step === 'take') {
-        const who = room.seats[s.currentSeat] ? room.seats[s.currentSeat].nickname : '?';
+        const who = room.seats[s.currentSeat] ? (NICK.get(room.seats[s.currentSeat].username) || room.seats[s.currentSeat].username) : '?';
         message = s.currentSeat === seatIdx ? '轮到你了：退一张主牌' : '等待 ' + who + ' 退贡';
       } else message = '进贡：庄家方给出最大牌';
     } else if (s.phase === 'bury') {
       message = s.currentSeat === seatIdx ? '庄家选 6 张无分牌扣底（底牌将公开）' : '等待庄家埋底';
     } else if (s.phase === 'trick') {
       if (s.trick && s.trick.winnerSeat != null) {
-        const who = room.seats[s.trick.winnerSeat] ? room.seats[s.trick.winnerSeat].nickname : '?';
+        const who = room.seats[s.trick.winnerSeat] ? (NICK.get(room.seats[s.trick.winnerSeat].username) || room.seats[s.trick.winnerSeat].username) : '?';
         message = who + ' 赢得本墩' + (s.trick.pointsWon ? '，得 ' + s.trick.pointsWon + ' 分' : '');
       } else if (s.currentSeat === seatIdx) {
         message = '轮到你了：出牌';
       } else {
-        const who = room.seats[s.currentSeat] ? room.seats[s.currentSeat].nickname : '?';
+        const who = room.seats[s.currentSeat] ? (NICK.get(room.seats[s.currentSeat].username) || room.seats[s.currentSeat].username) : '?';
         message = '等待 ' + who + ' 出牌';
       }
     } else if (s.phase === 'round_end') {
@@ -204,11 +216,12 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       const actor = actorSeat != null ? room.seats[actorSeat] : null;
       if (actor) {
         const actSession = sessions.get(actor.username);
-        if (!actSession || !actSession.ws) message = actor.nickname + ' 已离线，等待重连（本副暂停）';
+        if (!actSession || !actSession.ws) message = (NICK.get(actor.username) || actor.username) + ' 已离线，等待重连（本副暂停）';
       }
     }
     return {
       roomId: room.roomId,
+      mode: room.mode || 'p4',
       seq,
       phase: s.phase,
       roundNo: s.roundNo,
@@ -222,6 +235,8 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       revealed: s.revealed.map((r) => ({ ...r })),
       effectiveReveal: s.effectiveReveal ? { ...s.effectiveReveal, cardIds: s.effectiveReveal.cardIds.slice() } : null,
       rebellion: s.rebellion,
+      rebellionLevel: s.rebellionLevel ?? 0,
+      revealBy: s.revealBy || null,
       tributePlan: s.tributePlan,
       tributeState: s.tributeState ? JSON.parse(JSON.stringify(s.tributeState)) : null,
       lastGive,
@@ -309,8 +324,9 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
 
       if (msg.type === 'create_room') {
         if (userRoom.has(username)) { err(ws, 'ALREADY_IN_ROOM', '你已在房间中'); return; }
-        const roomId = genRoomId();
-        const room = { roomId, phase: 'waiting', hostSeatId: 0, seats: [null, null, null, null], game: null, seq: 0 };
+        const mode = d.mode === 'p6' ? 'p6' : 'p4';
+        const roomId = genRoomId(mode);
+        const room = { roomId, mode, phase: 'waiting', hostSeatId: 0, seats: new Array(mode === 'p6' ? 6 : 4).fill(null), game: null, seq: 0 };
         room.seats[0] = { seatId: 0, username, ready: false };
         rooms.set(roomId, room);
         userRoom.set(username, roomId);
@@ -321,6 +337,8 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         if (userRoom.has(username)) { err(ws, 'ALREADY_IN_ROOM', '你已在房间中'); return; }
         const room = rooms.get(String(d.roomId || ''));
         if (!room) { err(ws, 'ROOM_NOT_FOUND', '房间不存在'); return; }
+        const expectMode = String(d.roomId || '').length === 6 ? 'p6' : 'p4';
+        if (room.mode !== expectMode) { err(ws, 'JOIN_MODE_MISMATCH', '房号与模式不匹配'); return; }
         const idx = room.seats.findIndex((s) => !s);
         if (idx < 0) { err(ws, 'ROOM_FULL', '房间已满'); return; }
         room.seats[idx] = { seatId: idx, username, ready: false };
@@ -347,7 +365,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         if (!room) { err(ws, 'NOT_IN_ROOM', '你不在房间中'); return; }
         if (room.phase !== 'waiting') { err(ws, 'ROOM_NOT_WAITING', '游戏开始后不能换位'); return; }
         const a = Number(d.a), b = Number(d.b);
-        if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || a > 3 || b < 0 || b > 3 || a === b) {
+        if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0 || a >= room.seats.length || b >= room.seats.length || a === b) {
           err(ws, 'BAD_SEATS', '座位参数错误'); return;
         }
         if (a === room.hostSeatId || b === room.hostSeatId) { err(ws, 'HOST_FIXED', '房主座位固定'); return; }
@@ -364,9 +382,12 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         if (room.phase !== 'waiting') { err(ws, 'ROOM_NOT_WAITING', '房间不在等待状态'); return; }
         const hostSeat = room.seats[room.hostSeatId];
         if (!hostSeat || hostSeat.username !== username) { err(ws, 'NOT_HOST', '只有房主可以开始游戏'); return; }
-        const allOk = room.seats.every((s) => s && s.ready && sessions.get(s.username) && sessions.get(s.username).ws);
-        if (!allOk) { err(ws, 'NOT_READY', '需要 4 人在线且全部已准备'); return; }
-        const game = new Game(room.seats.map((s) => NICK.get(s.username) || s.username));
+        const need = room.mode === 'p6' ? 6 : 4;
+        const allOk = room.seats.length === need && room.seats.every((s) => s && s.ready && sessions.get(s.username) && sessions.get(s.username).ws);
+        if (!allOk) { err(ws, 'NOT_READY', '需要 ' + need + ' 人在线且全部已准备'); return; }
+        const game = room.mode === 'p6'
+          ? new Game6(room.seats.map((s) => s.username))
+          : new Game(room.seats.map((s) => NICK.get(s.username) || s.username));
         game.startRound();
         room.game = game;
         room.phase = 'playing';

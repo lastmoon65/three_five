@@ -6,6 +6,7 @@ export const ACCOUNTS = [
   { username: 'player3', password: '123456', nickname: '玩家三' },
   { username: 'player4', password: '123456', nickname: '玩家四' },
   { username: 'player5', password: '123456', nickname: '测试五' },
+  { username: 'player6', password: '123456', nickname: '测试六' },
   { username: 'erxiao', password: '123456', nickname: 'erxiao' },
   { username: 'chendao', password: '123456', nickname: 'chendao' },
   { username: 'wangzong', password: '123456', nickname: 'wangzong' },

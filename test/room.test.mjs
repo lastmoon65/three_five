@@ -58,11 +58,11 @@ async function login(name) {
   return { ws: c.ws, inbox: c.inbox, token: ok.data.token, user: ok.data.user.username };
 }
 
-test('建房返回 6 位房号与房主席位', async () => {
+test('建房返回 4 位房号与房主席位', async () => {
   const u = await login('player1');
   send(u.ws, { type: 'create_room' });
   const m = await waitMsg(u.inbox, 'room_updated');
-  assert.match(m.data.roomId, /^\d{6}$/);
+  assert.match(m.data.roomId, /^\d{4}$/);
   assert.equal(m.data.phase, 'waiting');
   assert.equal(m.data.hostSeatId, 0);
   assert.equal(m.data.seats[0].userId, 'player1');
