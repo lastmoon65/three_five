@@ -1,0 +1,15 @@
+﻿{
+    "name":  "hongxin-duijue",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "smoke":  "node game/smoke.mjs",
+                    "test":  "node --test test/engine.test.mjs",
+                    "start":  "node server.mjs",
+                    "net":  "node net-server.mjs",
+                    "test:net":  "node --test test/net-server.test.mjs"
+                },
+    "dependencies":  {
+                         "ws":  "^8.21.1"
+                     }
+}

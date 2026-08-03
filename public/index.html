@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>红心对决 · 单机版</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <button id="resetBtn" title="重新开始">↺</button>
+      <span id="roundInfo">准备中</span>
+      <span id="scoreInfo">—</span>
+      <span id="phaseInfo">—</span>
+    </header>
+
+    <main id="table">
+      <div id="seatTop" class="seat opponent"></div>
+      <div id="seatLeft" class="seat opponent"></div>
+      <section id="trick">
+        <div id="trickInfo"></div>
+        <div id="trickCards"></div>
+        <div id="trickResult"></div>
+        <div id="bottomBar"></div>
+      </section>
+      <div id="seatRight" class="seat opponent"></div>
+    </main>
+
+    <section id="handArea">
+      <div id="handTitle"></div>
+      <div id="handCards"></div>
+      <div id="actionBar">
+        <div id="hint"></div>
+        <div id="buttons"></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="setupOverlay" class="overlay">
+    <div class="overlayBox">
+      <h2>红心对决 · 单机版</h2>
+      <p class="sub">同一台设备四人轮流操作，轮到谁就把设备递给谁</p>
+      <div class="nameRows">
+        <input id="name0" placeholder="玩家一" value="玩家一">
+        <input id="name1" placeholder="玩家二" value="玩家二">
+        <input id="name2" placeholder="玩家三" value="玩家三">
+        <input id="name3" placeholder="玩家四" value="玩家四">
+      </div>
+      <button id="startBtn">开始游戏</button>
+      <p class="tip">对家为队友：玩家一&玩家三 vs 玩家二&玩家四</p>
+    </div>
+  </div>
+
+  <div id="passOverlay" class="overlay hidden">
+    <div class="overlayBox">
+      <h2>轮到 <span id="passName"></span></h2>
+      <p>请把设备递给 <span id="passName2"></span></p>
+      <button id="passConfirm">我拿到设备了</button>
+    </div>
+  </div>
+
+  <div id="resultOverlay" class="overlay hidden">
+    <div class="overlayBox">
+      <h2>本副结算</h2>
+      <div id="resultContent"></div>
+      <button id="nextRoundBtn">下一副</button>
+    </div>
+  </div>
+
+  <script type="module" src="./game.js"></script>
+</body>
+</html>

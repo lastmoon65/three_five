@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>红心对决 · 联网版</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="app">
+    <div id="loginView">
+      <h1>红心对决 · 联网版</h1>
+      <p class="sub">私人房间 · 四人私玩</p>
+      <input id="username" placeholder="用户名" autocomplete="username">
+      <input id="password" type="password" placeholder="密码" autocomplete="current-password">
+      <button id="loginBtn">登 录</button>
+      <p id="loginMsg"></p>
+      <p class="tip">固定账号：player1 ~ player4，密码 123456</p>
+    </div>
+
+    <div id="hallView" class="hidden">
+      <header class="hallHead">
+        <span>欢迎，<b id="me"></b></span>
+        <button id="logoutBtn" class="ghost">退出</button>
+      </header>
+      <section class="card">
+        <h3>在线玩家</h3>
+        <ul id="onlineList"></ul>
+      </section>
+      <section class="actions">
+        <button id="createRoomBtn">创建房间</button>
+        <button id="joinRoomBtn">加入房间</button>
+      </section>
+      <section id="joinPanel" class="card hidden">
+        <input id="joinRoomInput" placeholder="6 位房间号" inputmode="numeric" maxlength="6">
+        <button id="joinConfirmBtn">加入</button>
+        <button id="joinCancelBtn" class="ghost">取消</button>
+      </section>
+      <p class="tip">4 人坐满并全部准备后，房主可开始游戏</p>
+    </div>
+
+    <div id="gameView" class="hidden">
+      <header class="hallHead">
+        <span>第 <b id="gRound"></b> 副 · <span id="gPhase"></span></span>
+        <button id="gResetBtn" class="ghost">重置</button>
+      </header>
+      <div id="gDealer"></div>
+      <div id="opponents"></div>
+      <div id="gCenter"></div>
+      <div id="gHand"></div>
+      <div id="gButtons"></div>
+      <p class="tip" id="gMsg"></p>
+    </div>
+
+    <div id="roomView" class="hidden">
+      <header class="hallHead">
+        <span>房间 <b id="roomNum"></b></span>
+        <button id="copyRoomBtn" class="ghost">复制房号</button>
+      </header>
+      <div id="seats"></div>
+      <section class="actions">
+        <button id="readyBtn">准备</button>
+        <button id="startGameBtn" class="ghost">开始游戏</button>
+        <button id="swapBtn" class="ghost">互换 3/4 号位</button>
+        <button id="leaveRoomBtn" class="ghost">离开房间</button>
+      </section>
+      <p class="tip" id="roomTip"></p>
+    </div>
+  </div>
+  <div id="connMsg"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
