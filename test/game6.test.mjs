@@ -6,7 +6,7 @@ import { isChangZhu, isMain } from '../game/game.mjs';
 
 function game() { return new Game6(['p1', 'p2', 'p3', 'p4', 'p5', 'p6']); }
 function deckOf(g) { return [...g.cardMap.values()]; }
-function skipReveals(g) { for (let i = 0; i < 6; i++) g.reveal(null); }
+function skipReveals(g) { for (let i = 0; i < 6; i++) g.reveal(i, null); }
 
 test('两副牌：108 张、id 无重复、每张两副、总分 200', () => {
   const g = game();
@@ -31,9 +31,8 @@ test('发牌：每人 17 张 + 底牌 6 张，108 张全用无重叠', () => {
   assert.deepEqual(g.hands.map((h) => h.length), [17, 17, 17, 17, 17, 17]);
   assert.equal(g.bottom.length, 6);
   assert.equal(g.phase, 'reveal');
-  assert.equal(g.revealOrder.length, 6);
-  assert.equal(g.revealOrder[0], g.dealerIndex, '庄家先亮');
-  assert.equal(g.revealOrder[1], (g.dealerIndex + 5) % 6, '逆时针顺序');
+  assert.deepEqual(g.revealDone, [false, false, false, false, false, false], '同时亮牌：初始无人提交');
+  assert.equal(g.currentSeat, g.dealerIndex);
 });
 
 function craftRevealRound(plan, setup) {
@@ -41,20 +40,21 @@ function craftRevealRound(plan, setup) {
   g.startRound();
   g.tributePlan = plan;
   const cfg = setup(g) || {};
-  const order = g.revealOrder;
+  const d = g.dealerIndex;
+  const order = [d, (d + 5) % 6, (d + 4) % 6, (d + 3) % 6, (d + 2) % 6, (d + 1) % 6];
   let lastErr = null;
   for (let i = 0; i < 6; i++) {
-    const seat = order[g.revealIdx];
+    const seat = order[i];
     const want = cfg.actions && cfg.actions[seat];
     try {
       if (want === 'san') {
-        const san = g.legalReveals().find((o) => o.level === 'san');
-        g.reveal(san ? san.cardIds : null);
+        const san = g.legalReveals(seat).find((o) => o.level === 'san');
+        g.reveal(seat, san ? san.cardIds : null);
       } else if (want === 'wu') {
-        const wu = g.legalReveals().find((o) => o.level === 'wu');
-        g.reveal(wu ? wu.cardIds : null);
+        const wu = g.legalReveals(seat).find((o) => o.level === 'wu');
+        g.reveal(seat, wu ? wu.cardIds : null);
       } else {
-        g.reveal(null);
+        g.reveal(seat, null);
       }
     } catch (e) {
       lastErr = e;

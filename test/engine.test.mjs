@@ -19,7 +19,7 @@ function setDealer(g, seat) {
   g.currentSeat = seat;
 }
 
-function allRevealSkip(g) { for (let i = 0; i < 4; i++) g.reveal(null); }
+function allRevealSkip(g) { for (let i = 0; i < 4; i++) g.reveal(i, null); }
 
 function setHand(g, seat, ids) { g.hands[seat] = ids.map(id => g.cardById(id)); }
 
@@ -88,7 +88,7 @@ test('亮五反：三张5 亮出后 power 998（方块5 保持 1000）（§4.2/�
   setHand(g, 0, ['heart_5', 'spade_5', 'diamond_5', 'spade_A', 'spade_K', 'spade_10', 'spade_9', 'spade_8', 'spade_7', 'spade_6', 'spade_4', 'spade_3']);
   const opts = g.legalReveals();
   assert.ok(opts.some(o => o.level === 'wu'));
-  g.reveal(['heart_5', 'spade_5', 'diamond_5']);
+  g.reveal(0, ['heart_5', 'spade_5', 'diamond_5']);
   assert.equal(g.state().effectiveReveal.level, 'wu');
   assert.equal(g.powerOf(g.cardById('heart_5')), 998);
   assert.equal(g.powerOf(g.cardById('spade_5')), 998);
@@ -99,7 +99,7 @@ test('亮三反：三张3 亮出后 power 996（§4.2）', () => {
   const g = craft();
   setDealer(g, 0);
   setHand(g, 0, ['heart_3', 'spade_3', 'club_3', 'spade_A', 'spade_K', 'spade_10', 'spade_9', 'spade_8', 'spade_7', 'spade_6', 'spade_4', 'spade_5']);
-  g.reveal(['heart_3', 'spade_3', 'club_3']);
+  g.reveal(0, ['heart_3', 'spade_3', 'club_3']);
   assert.equal(g.state().effectiveReveal.level, 'san');
   assert.equal(g.powerOf(g.cardById('heart_3')), 996);
 });
@@ -109,20 +109,20 @@ test('五反可覆盖先亮的三反；同级别后亮无效（§4.3）', () => 
   setDealer(g, 0);
   setHand(g, 0, ['heart_3', 'spade_3', 'club_3', 'spade_A', 'spade_K', 'spade_10', 'spade_9', 'spade_8', 'spade_7', 'spade_6', 'spade_4', 'spade_5']);
   setHand(g, 3, ['heart_5', 'spade_5', 'club_5', 'spade_A', 'spade_K', 'spade_10', 'spade_9', 'spade_8', 'spade_7', 'spade_6', 'spade_4', 'spade_3']);
-  g.reveal(['heart_3', 'spade_3', 'club_3']); // 座位0 先亮三反
-  g.reveal(['heart_5', 'spade_5', 'club_5']); // 座位3 后亮五反 -> 覆盖
+  g.reveal(0, ['heart_3', 'spade_3', 'club_3']); // 座位0 先亮三反
+  g.reveal(3, ['heart_5', 'spade_5', 'club_5']); // 座位3 后亮五反 -> 覆盖
   assert.equal(g.state().effectiveReveal.level, 'wu');
   assert.equal(g.state().effectiveReveal.seat, 3);
   setHand(g, 2, ['heart_5', 'club_5', 'diamond_5', 'spade_A', 'spade_K', 'spade_10', 'spade_9', 'spade_8', 'spade_7', 'spade_6', 'spade_4', 'spade_3']);
-  assert.throws(() => g.reveal(['heart_5', 'club_5', 'diamond_5']), /REVEAL_WU_TAKEN/);
+  assert.throws(() => g.reveal(2, ['heart_5', 'club_5', 'diamond_5']), /REVEAL_WU_TAKEN/);
 });
 
 test('亮牌非法输入：非 3/5、张数不对都报错（§4.2）', () => {
   const g = craft();
   setDealer(g, 0);
   setHand(g, 0, ['heart_4', 'spade_4', 'club_4', 'spade_A', 'spade_K', 'spade_10', 'spade_9', 'spade_8', 'spade_7', 'spade_6', 'diamond_4', 'spade_5']);
-  assert.throws(() => g.reveal(['heart_4', 'spade_4', 'club_4']), /REVEAL_RANK_35/);
-  assert.throws(() => g.reveal(['heart_5', 'spade_5']), /REVEAL_NEED_3/);
+  assert.throws(() => g.reveal(0, ['heart_4', 'spade_4', 'club_4']), /REVEAL_RANK_35/);
+  assert.throws(() => g.reveal(0, ['heart_5', 'spade_5']), /REVEAL_NEED_3/);
 });
 
 test('造反：闲家亮番成功 -> 本副取消进贡（§4.4）', () => {
@@ -132,10 +132,10 @@ test('造反：闲家亮番成功 -> 本副取消进贡（§4.4）', () => {
   g.startRound();
   assert.equal(g.state().tributePlan, 'double');
   setHand(g, 3, ['heart_5', 'spade_5', 'club_5', 'spade_A', 'spade_K', 'spade_10', 'spade_9', 'spade_8', 'spade_7', 'spade_6', 'spade_4', 'spade_3']);
-  g.reveal(null); // 座位0（庄家）跳过
-  g.reveal(['heart_5', 'spade_5', 'club_5']); // 座位3（闲家）亮五反
-  g.reveal(null);
-  g.reveal(null);
+  g.reveal(0, null); // 座位0（庄家）跳过
+  g.reveal(3, ['heart_5', 'spade_5', 'club_5']); // 座位3（闲家）亮五反
+  g.reveal(1, null);
+  g.reveal(2, null);
   const s = g.state();
   assert.equal(s.rebellion, true);
   assert.equal(s.tributePlan, 'none');
@@ -148,10 +148,10 @@ test('庄家方亮番不造反（§4.5）', () => {
   g.result = { tribute: 'single', newDealerIndex: 0, streak: 0 };
   g.startRound();
   setHand(g, 0, ['heart_5', 'spade_5', 'club_5', 'spade_A', 'spade_K', 'spade_10', 'spade_9', 'spade_8', 'spade_7', 'spade_6', 'spade_4', 'spade_3']);
-  g.reveal(['heart_5', 'spade_5', 'club_5']);
-  g.reveal(null);
-  g.reveal(null);
-  g.reveal(null);
+  g.reveal(0, ['heart_5', 'spade_5', 'club_5']);
+  g.reveal(1, null);
+  g.reveal(2, null);
+  g.reveal(3, null);
   assert.equal(g.state().rebellion, false);
   assert.equal(g.state().phase, 'tribute');
 });
@@ -536,5 +536,5 @@ test('亮牌必须出自本人手牌（联网防作弊）', () => {
   setDealer(g, 0);
   setHand(g, 0, ['spade_A', 'spade_K', 'spade_10', 'spade_9', 'spade_8', 'spade_7', 'spade_6', 'spade_5', 'spade_4', 'spade_3', 'club_A', 'club_K']);
   setHand(g, 1, ['heart_5', 'spade_5', 'club_5', 'heart_A', 'heart_K', 'heart_Q', 'heart_10', 'heart_9', 'heart_8', 'heart_7', 'heart_6', 'heart_4']);
-  assert.throws(() => g.reveal(['heart_5', 'spade_5', 'club_5']), /CARD_NOT_IN_HAND/);
+  assert.throws(() => g.reveal(0, ['heart_5', 'spade_5', 'club_5']), /CARD_NOT_IN_HAND/);
 });

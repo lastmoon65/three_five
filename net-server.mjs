@@ -143,8 +143,10 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
     const s = g.state();
     const revealActor = s.revealOrder ? s.revealOrder[s.revealIdx] : null;
     let revealOptions = [];
-    if (s.phase === 'reveal' && revealActor === seatIdx) {
-      try { revealOptions = g.legalReveals().map((o) => ({ ...o, cardIds: o.cardIds.slice() })); } catch { /* 忽略 */ }
+    const canRevealNow = s.phase === 'reveal' && !(s.revealDone && s.revealDone[seatIdx]);
+    const canBuryReveal = s.phase === 'bury' && s.dealerIndex === seatIdx && !s.effectiveReveal;
+    if (canRevealNow || canBuryReveal) {
+      try { revealOptions = g.legalReveals(seatIdx).map((o) => ({ ...o, cardIds: o.cardIds.slice() })); } catch { /* 忽略 */ }
     }
     let takeOptions = [];
     if (s.phase === 'tribute' && s.tributeState && s.tributeState.step === 'take' && s.currentSeat === seatIdx) {
@@ -182,8 +184,11 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
     }
     let message;
     if (s.phase === 'reveal') {
-      const who = revealActor != null && room.seats[revealActor] ? (NICK.get(room.seats[revealActor].username) || room.seats[revealActor].username) : '?';
-      message = revealActor === seatIdx ? '轮到你了：选择亮牌或跳过' : '等待 ' + who + ' 亮牌';
+      const done = (s.revealDone || []).filter(Boolean).length;
+      const total = room.seats.filter(Boolean).length;
+      message = s.revealDone && s.revealDone[seatIdx]
+        ? '已选择（' + done + '/' + total + '），等待其他玩家'
+        : '亮牌阶段：三张3=三反 / 三张5=五反，每人可同时亮或跳过';
     } else if (s.phase === 'tribute') {
       const st = s.tributeState;
       if (st && st.step === 'take') {
@@ -212,7 +217,11 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       message = '阶段：' + s.phase;
     }
     if (['reveal', 'tribute', 'bury', 'trick'].includes(s.phase)) {
-      const actorSeat = s.phase === 'reveal' ? revealActor : s.currentSeat;
+      let actorSeat = s.currentSeat;
+      if (s.phase === 'reveal') {
+        const done = s.revealDone || [];
+        actorSeat = (s.revealOrder && s.revealOrder[s.revealIdx] != null) ? s.revealOrder[s.revealIdx] : done.findIndex((v) => !v);
+      }
       const actor = actorSeat != null ? room.seats[actorSeat] : null;
       if (actor) {
         const actSession = sessions.get(actor.username);
@@ -237,6 +246,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       rebellion: s.rebellion,
       rebellionLevel: s.rebellionLevel ?? 0,
       revealBy: s.revealBy || null,
+      revealDone: s.revealDone || null,
       tributePlan: s.tributePlan,
       tributeState: s.tributeState ? JSON.parse(JSON.stringify(s.tributeState)) : null,
       lastGive,
@@ -400,14 +410,25 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         const room = roomId && rooms.get(roomId);
         if (!room || !room.game) { err(ws, 'NO_GAME', '游戏未开始'); return; }
         const g = room.game;
-        if (g.state().phase !== 'reveal') { err(ws, 'BAD_PHASE', '当前不是亮牌阶段'); return; }
         const seatIdx = room.seats.findIndex((s) => s && s.username === username);
-        const st = g.state();
-        if (st.revealOrder[st.revealIdx] !== seatIdx) { err(ws, 'NOT_YOUR_TURN', '还没轮到你亮牌'); return; }
+        if (seatIdx < 0) { err(ws, 'NOT_IN_ROOM', '你不在房间中'); return; }
         const ids = Array.isArray(d.cardIds) && d.cardIds.length ? d.cardIds : null;
-        try { g.reveal(ids); } catch (e) { err(ws, 'BAD_REVEAL', e.message); return; }
-        if (g.state().phase === 'tribute' && g.state().tributeState && g.state().tributeState.step === 'give') g.tributeGive();
-        broadcastGameState(room);
+        const st = g.state();
+        if (st.phase === 'reveal') {
+          // 同时亮牌：任何座位可提交一次（亮或跳过），全部提交后推进
+          try { g.reveal(seatIdx, ids); } catch (e) { err(ws, 'BAD_REVEAL', e.message); return; }
+          if (g.state().phase === 'tribute' && g.state().tributeState && g.state().tributeState.step === 'give') g.tributeGive();
+          broadcastGameState(room);
+          return;
+        }
+        if (st.phase === 'bury') {
+          // 庄家埋底补亮：仅无人亮牌时可用（服务端与引擎双重校验）
+          if (seatIdx !== st.dealerIndex) { err(ws, 'NOT_YOUR_TURN', '只有庄家可补亮'); return; }
+          try { g.buryReveal(ids); } catch (e) { err(ws, 'BAD_REVEAL', e.message); return; }
+          broadcastGameState(room);
+          return;
+        }
+        err(ws, 'BAD_PHASE', '当前不是亮牌阶段');
         return;
       }
       if (msg.type === 'tribute_take') {

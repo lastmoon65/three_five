@@ -93,14 +93,16 @@ async function skipReveals(users) {
   while (guard < 12) {
     const st = newestGame(users[0].inbox);
     if (!st || st.data.phase !== 'reveal') break;
-    const actor = st.data.revealActor;
-    if (actor == null) break;
-    const u = users.find((x) => x.seat === actor);
+    const done = st.data.revealDone || [];
+    const seat = done.findIndex((v) => !v);
+    if (seat < 0) break;
+    const u = users.find((x) => x.seat === seat);
     await syncTo(u.inbox, st.data.seq);
     const before = newestGame(u.inbox).data.seq;
+    const beforeCount = (st.data.revealDone || []).filter(Boolean).length;
     send(u.ws, { type: 'reveal', data: { cardIds: null } });
     guard++;
-    await waitSeqUntil(users[0].inbox, before, (d) => d.phase !== 'reveal' || d.revealActor !== actor, 12000, '亮牌轮转');
+    await waitSeqUntil(users[0].inbox, before, (d) => d.phase !== 'reveal' || (d.revealDone || []).filter(Boolean).length > beforeCount, 12000, '亮牌推进');
   }
   const st = newestGame(users[0].inbox);
   if (!st || st.data.phase === 'reveal') throw new Error('亮牌未结束');

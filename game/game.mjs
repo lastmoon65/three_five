@@ -76,6 +76,7 @@ export class Game {
     this.trick = null;
     this.currentSeat = null;
     this.revealOrder = null;
+    this.revealDone = null;
     this.revealIdx = 0;
     this.result = null;
     this.rebellion = false;
@@ -110,9 +111,10 @@ export class Game {
     this.autoBury = null;
     this.buriedBy = null;
     this.phase = 'reveal';
-    this.revealOrder = [this.dealerIndex, (this.dealerIndex + 3) % 4, (this.dealerIndex + 2) % 4, (this.dealerIndex + 1) % 4];
+    this.revealDone = [false, false, false, false];
+    this.revealOrder = null;
     this.revealIdx = 0;
-    this.currentSeat = this.revealOrder[0];
+    this.currentSeat = this.dealerIndex;
   }
 
   nextRound() {
@@ -141,10 +143,13 @@ export class Game {
     return cards.length === 4 && sameRank(cards) && !cards.some(c => this.tributed.has(c.id));
   }
 
-  // ---------- 亮牌 ----------
-  legalReveals() {
-    if (this.phase !== 'reveal') return [];
-    const hand = this.hands[this.currentSeat];
+  // ---------- 亮牌（同时进行：每人可同时亮/不亮，全部提交后结算；庄家可在无人亮牌时于埋底补亮） ----------
+  legalReveals(seat) {
+    if (seat == null) seat = this.dealerIndex;
+    const allow = (this.phase === 'reveal' && !this.revealDone[seat])
+      || (this.phase === 'bury' && seat === this.dealerIndex && !this.effectiveReveal);
+    if (!allow) return [];
+    const hand = this.hands[seat];
     const byRank = {};
     for (const c of hand) (byRank[c.rank] ||= []).push(c);
     const out = [];
@@ -153,9 +158,9 @@ export class Game {
     return out;
   }
 
-  reveal(cardIds) {
+  reveal(seat, cardIds) {
     if (this.phase !== 'reveal') throw new Error('BAD_PHASE');
-    const seat = this.revealOrder[this.revealIdx];
+    if (this.revealDone[seat]) throw new Error('REVEAL_ALREADY_DONE');
     if (cardIds !== null && cardIds !== undefined) {
       if (cardIds.length !== 3) throw new Error('REVEAL_NEED_3');
       const handSet = new Set(this.handIds(seat));
@@ -174,15 +179,35 @@ export class Game {
         for (const c of cards) this.revealed.set(c.id, 996);
       }
     }
-    this.revealIdx++;
-    if (this.revealIdx >= 4) {
+    this.revealDone[seat] = true;
+    if (this.revealDone.every(Boolean)) {
       this.rebellion = !!(this.effectiveReveal && this.players[this.effectiveReveal.seat].team !== this.players[this.dealerIndex].team);
       if (this.rebellion) this.tributePlan = 'none';
       if (this.tributePlan === 'none') this.enterBury();
       else this.enterTribute();
-    } else {
-      this.currentSeat = this.revealOrder[this.revealIdx];
     }
+  }
+
+  // 庄家埋底补亮：仅当亮牌阶段无人亮牌（含庄家）时可用；庄家方亮番无造反效果
+  buryReveal(cardIds) {
+    if (this.phase !== 'bury') throw new Error('BAD_PHASE');
+    const seat = this.dealerIndex;
+    if (this.effectiveReveal) throw new Error('REVEAL_AFTER_OTHERS');
+    if (cardIds.length !== 3) throw new Error('REVEAL_NEED_3');
+    const handSet = new Set(this.handIds(seat));
+    for (const id of cardIds) if (!handSet.has(id)) throw new Error('CARD_NOT_IN_HAND');
+    const cards = cardIds.map(id => this.cardById(id));
+    if (!cards.every(c => c.rank === cards[0].rank)) throw new Error('REVEAL_SAME_RANK');
+    const level = cards[0].rank === '5' ? 'wu' : cards[0].rank === '3' ? 'san' : null;
+    if (!level) throw new Error('REVEAL_RANK_35');
+    if (level === 'wu') {
+      this.effectiveReveal = { seat, level, cardIds: cardIds.slice() };
+      for (const c of cards) this.revealed.set(c.id, c.rank === '5' && c.suit === 'diamond' ? 1000 : 998);
+    } else {
+      this.effectiveReveal = { seat, level, cardIds: cardIds.slice() };
+      for (const c of cards) this.revealed.set(c.id, 996);
+    }
+    // 庄家方亮番不造反，阶段停留在埋底，由庄家继续选牌扣底
   }
   enterTribute() {
     this.phase = 'tribute';
@@ -591,6 +616,7 @@ export class Game {
       result: this.result ? { ...this.result, scores: this.result.scores.slice() } : null,
       revealOrder: this.revealOrder ? this.revealOrder.slice() : null,
       revealIdx: this.revealIdx,
+      revealDone: this.revealDone ? this.revealDone.slice() : null,
     };
   }
 }

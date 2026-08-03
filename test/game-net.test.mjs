@@ -140,27 +140,29 @@ test('start_game 校验 + 成功发牌 + 手牌隐私', async () => {
   });
 });
 
-test('亮牌：轮次校验与非法输入', async () => {
+test('亮牌：同时提交、重复提交与非法输入', async () => {
   const { users } = await setup4();
   await readyAll(users);
   const states = await startGame(users);
-  const actor = states[0].revealActor;
-  const actorUser = users.find((u) => u.seat === actor);
-  const otherUser = users.find((u) => u.seat !== actor);
-  // 非行动者亮牌 -> NOT_YOUR_TURN
+  const me = states[0].me;
+  const meUser = users.find((u) => u.seat === me);
+  const otherUser = users.find((u) => u.seat !== me);
+  // 同时亮牌：非自己座位也可先提交（跳过合法）
   send(otherUser.ws, { type: 'reveal', data: { cardIds: null } });
-  await waitError(otherUser.inbox, 'NOT_YOUR_TURN');
-  // 行动者亮 2 张 -> BAD_REVEAL
-  send(actorUser.ws, { type: 'reveal', data: { cardIds: ['a', 'b'] } });
-  await waitError(actorUser.inbox, 'BAD_REVEAL');
-  // 行动者亮别人的牌 -> BAD_REVEAL
+  await waitNewestGame(users[0].inbox, (d) => d.revealDone && d.revealDone[otherUser.seat] === true);
+  // 亮 2 张 -> BAD_REVEAL
+  send(meUser.ws, { type: 'reveal', data: { cardIds: ['a', 'b'] } });
+  await waitError(meUser.inbox, 'BAD_REVEAL');
+  // 亮别人的牌 -> BAD_REVEAL
   const otherHand = states.find((s) => s.me === otherUser.seat).myHand;
-  send(actorUser.ws, { type: 'reveal', data: { cardIds: otherHand.slice(0, 3).map((c) => c.id) } });
-  await waitError(actorUser.inbox, 'BAD_REVEAL');
-  // 行动者跳过 -> 轮到下一位
-  send(actorUser.ws, { type: 'reveal', data: { cardIds: null } });
-  const next = await waitNewestGame(actorUser.inbox, (d) => d.revealActor !== actor);
-  assert.ok(next);
+  send(meUser.ws, { type: 'reveal', data: { cardIds: otherHand.slice(0, 3).map((c) => c.id) } });
+  await waitError(meUser.inbox, 'BAD_REVEAL');
+  // 重复提交 -> REVEAL_ALREADY_DONE
+  send(otherUser.ws, { type: 'reveal', data: { cardIds: null } });
+  await waitError(otherUser.inbox, 'BAD_REVEAL'); // 服务端统一 BAD_REVEAL，消息为 REVEAL_ALREADY_DONE
+  // 自己跳过 -> 标记已过
+  send(meUser.ws, { type: 'reveal', data: { cardIds: null } });
+  await waitNewestGame(meUser.inbox, (d) => d.revealDone && d.revealDone[me] === true);
 });
 
 test('全部跳过亮牌后进入埋底阶段', async () => {
@@ -179,15 +181,17 @@ async function skipAllReveals(users) {
   while (guard < 8) {
     const latest = [...users[0].inbox].reverse().find((m) => m.type === 'game_state');
     if (!latest || latest.data.phase !== 'reveal') break;
-    const actor = latest.data.revealActor;
-    if (actor == null) break;
-    const u = users.find((x) => x.seat === actor);
-    // 等行动者本人收到"轮到自己"的状态（seq 不低于宿主侧快照），避免用滞后快照发指令
-    const st = await waitNewestGame(u.inbox, (d) => d.phase === 'reveal' && d.revealActor === actor && d.seq >= latest.data.seq, 8000);
+    const done = latest.data.revealDone || [];
+    const seat = done.findIndex((v) => !v);
+    if (seat < 0) break;
+    const u = users.find((x) => x.seat === seat);
+    // 同时亮牌：等待该座位尚未提交的最新状态再发跳过
+    const st = await waitNewestGame(u.inbox, (d) => d.phase === 'reveal' && d.revealDone && !d.revealDone[seat] && d.seq >= latest.data.seq, 8000);
     send(u.ws, { type: 'reveal', data: { cardIds: null } });
     guard++;
-    // 等待最新状态推进（行动者变更或离开亮牌阶段）再继续
-    await waitNewestGame(users[0].inbox, (d) => d.seq > st.data.seq && (d.phase !== 'reveal' || d.revealActor !== actor), 8000);
+    const beforeCount = (st.data.revealDone || []).filter(Boolean).length;
+    // 等待提交数增加或离开亮牌阶段
+    await waitNewestGame(users[0].inbox, (d) => d.seq > st.data.seq && (d.phase !== 'reveal' || (d.revealDone || []).filter(Boolean).length > beforeCount), 8000);
   }
   await waitNewestGame(users[0].inbox, (d) => d.phase !== 'reveal', 8000);
 }
@@ -394,7 +398,8 @@ test('对局中断线：行动者离线等待，重连后继续', async () => {
   await readyAll(users);
   await startGame(users);
   const st = await waitNewestGame(users[0].inbox, (d) => d.phase === 'reveal');
-  const actor = st.data.revealActor;
+  const done = st.data.revealDone || [];
+  const actor = done.findIndex((v) => !v);
   const actorUser = users.find((u) => u.seat === actor);
   const other = users.find((u) => u.seat !== actor);
   const beforeSeq = [...other.inbox].reverse().find((x) => x.type === 'game_state').data.seq;
@@ -411,7 +416,7 @@ test('对局中断线：行动者离线等待，重连后继续', async () => {
   assert.equal(gs.data.seats[actor].connected, true);
   // 重连者继续行动
   send(r.ws, { type: 'reveal', data: { cardIds: null } });
-  const next = await waitNewestGame(other.inbox, (d) => d.revealActor != null && d.revealActor !== actor);
+  const next = await waitNewestGame(other.inbox, (d) => d.revealDone && d.revealDone[actor] === true);
   assert.ok(next.data.seq > beforeSeq, '重连后 seq 必须继续递增');
   r.ws.close();
 });
@@ -421,7 +426,8 @@ test('对局中顶号：新连接接管席位且拿到快照', async () => {
   await readyAll(users);
   await startGame(users);
   const st = await waitNewestGame(users[0].inbox, (d) => d.phase === 'reveal');
-  const actor = st.data.revealActor;
+  const done = st.data.revealDone || [];
+  const actor = done.findIndex((v) => !v);
   const actorUser = users.find((u) => u.seat === actor);
   // 同账号再次登录（顶号）
   const r = await connect();

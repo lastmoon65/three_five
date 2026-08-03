@@ -127,6 +127,7 @@ function renderSeat(el, idx) {
   if (s && !s.connected) parts.push('离线');
   if (game.revealBy && game.revealBy[idx]) parts.push('已亮' + (game.revealBy[idx] === 'wu' ? '五反' : '三反'));
   else if (game.effectiveReveal && game.effectiveReveal.seat === idx) parts.push('已亮' + (game.effectiveReveal.level === 'wu' ? '五反' : '三反'));
+  else if (game.phase === 'reveal' && game.revealDone && game.revealDone[idx]) parts.push('已过');
   info.textContent = parts.join(' · ');
   el.appendChild(info);
   const backs = document.createElement('div');
@@ -267,10 +268,11 @@ function renderGame() {
   const btns = $('buttons');
   btns.innerHTML = '';
   $('hint').textContent = game.message || '';
-  if (game.phase === 'reveal' && game.revealActor === me) {
+  if (game.phase === 'reveal' && !(game.revealDone && game.revealDone[me])) {
     (game.revealOptions || []).forEach((o) => {
       const b = document.createElement('button');
       b.textContent = '✨ ' + (o.level === 'wu' ? '亮五反' : '亮三反');
+      b.className = 'suggest';
       b.addEventListener('click', () => send({ type: 'reveal', data: { cardIds: o.cardIds } }));
       btns.appendChild(b);
     });
@@ -286,6 +288,18 @@ function renderGame() {
     b.addEventListener('click', () => { send({ type: 'tribute_take', data: { cardId: handSel[0] } }); handSel = []; });
     btns.appendChild(b);
   } else if (myTurnBury) {
+    if (!game.effectiveReveal) {
+      const canReveal = !!(game.revealOptions && game.revealOptions.length);
+      const rb = document.createElement('button');
+      rb.textContent = canReveal ? '✨ 亮牌（三五反）' : '亮牌（无可亮 3/5）';
+      rb.disabled = !canReveal;
+      if (canReveal) rb.className = 'suggest';
+      rb.addEventListener('click', () => {
+        const o = game.revealOptions && game.revealOptions[0];
+        if (o) send({ type: 'reveal', data: { cardIds: o.cardIds } });
+      });
+      btns.appendChild(rb);
+    }
     const b = document.createElement('button');
     b.textContent = '确认埋底（' + handSel.length + '/6）';
     b.disabled = handSel.length !== 6;

@@ -30,7 +30,7 @@ test('进贡局：全部亮牌完成后才进入进贡（亮牌先于进贡）',
   g.tributePlan = 'single';
   const phases = [];
   for (let i = 0; i < 4; i++) {
-    g.reveal(null);
+    g.reveal(i, null);
     phases.push(g.phase);
   }
   assert.deepEqual(phases.slice(0, 3), ['reveal', 'reveal', 'reveal'], '前三人亮牌时仍在亮牌阶段');
@@ -50,15 +50,13 @@ test('造反在进贡执行前判定：闲家亮三反成功则跳过进贡（�
   g.hands[g.dealerIndex] = noPts.slice(0, 12);
   const revPool = rest.filter((c) => !g.hands[g.dealerIndex].includes(c));
   g.hands[revSeat] = [threes[0], threes[1], threes[2], ...revPool.slice(0, 9)];
-  const order = g.revealOrder;
   let finalPhase = null;
-  for (let i = 0; i < 4; i++) {
-    const seat = order[g.revealIdx];
+  for (let seat = 0; seat < 4; seat++) {
     if (seat === revSeat) {
-      const san = g.legalReveals().find((o) => o.level === 'san');
-      g.reveal(san ? san.cardIds : null);
+      const san = g.legalReveals(seat).find((o) => o.level === 'san');
+      g.reveal(seat, san ? san.cardIds : null);
     } else {
-      g.reveal(null);
+      g.reveal(seat, null);
     }
     finalPhase = g.phase;
   }
@@ -111,7 +109,7 @@ test('真实进贡流程：进贡给出与退贡收回的牌都被标记为贡�
   const g = new Game(['a', 'b', 'c', 'd']);
   g.startRound();
   g.tributePlan = 'single';
-  for (let i = 0; i < 4; i++) g.reveal(null); // 全部不亮 → 进入进贡
+  for (let i = 0; i < 4; i++) g.reveal(i, null); // 全部不亮 → 进入进贡
   assert.equal(g.phase, 'tribute', '进入进贡阶段');
   g.tributeGive(); // 庄家自动进最大牌
   const giveId = g.lastGive.cardId;
