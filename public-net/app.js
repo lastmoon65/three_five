@@ -160,23 +160,27 @@ function renderSeat(el, idx) {
   if (game.dealerIndex === idx) parts.push('庄家');
   if (s && idx % 2 === game.me % 2) parts.push('队友');
   if (s && !s.connected) parts.push('离线');
-  if (game.revealBy && game.revealBy[idx]) parts.push('已亮' + (game.revealBy[idx] === 'wu' ? '五反' : '三反'));
-  else if (game.effectiveReveal && game.effectiveReveal.seat === idx) parts.push('已亮' + (game.effectiveReveal.level === 'wu' ? '五反' : '三反'));
-  else if (game.phase === 'reveal' && game.revealDone && game.revealDone[idx]) parts.push('已过');
+  if (game.phase === 'reveal' && game.revealDone && game.revealDone[idx] && !(game.revealCards && game.revealCards[idx])) parts.push('已过');
   info.textContent = parts.join(' · ');
   el.appendChild(info);
   const backs = document.createElement('div');
   backs.className = 'backs';
-  const show = Math.min(n, 8);
+  // 亮出的牌直接显示真牌（不再用牌背/文字）
+  const revealedById = new Map((game.revealed || []).map((r) => [r.id, r]));
+  const seatRevealed = ((game.revealCards && game.revealCards[idx]) || [])
+    .map((id) => revealedById.get(id)).filter(Boolean);
+  seatRevealed.forEach((c) => backs.appendChild(makeCard(c, 'mini')));
+  const hidden = n - seatRevealed.length;
+  const show = Math.min(hidden, 8);
   for (let i = 0; i < show; i++) {
     const b = document.createElement('div');
     b.className = 'card back';
     backs.appendChild(b);
   }
-  if (n > show) {
+  if (hidden > show) {
     const more = document.createElement('span');
     more.className = 'more';
-    more.textContent = '+' + (n - show);
+    more.textContent = '+' + (hidden - show);
     backs.appendChild(more);
   }
   el.appendChild(backs);
@@ -303,12 +307,16 @@ function renderGame() {
   const isMainC = (c) => c.suit === 'heart' || c.suit === 'joker' || (c.suit === 'diamond' && c.rank === '5') || (c.suit === 'spade' && c.rank === 'Q') || c.rank === 'J' || c.rank === '2' || revealedMain.has(c.id);
   // 排序：主牌（牌力从大到小）→ 副牌按 方块/梅花/黑桃 分组（组内牌力从大到小）
   (game.myHand || []).slice().sort((x, y) => {
-    const ax = isMainC(x) ? [0, -x.power] : [1, SUB_SUIT_ORDER[x.suit] ?? 9, -x.power];
-    const ay = isMainC(y) ? [0, -y.power] : [1, SUB_SUIT_ORDER[y.suit] ?? 9, -y.power];
+    const rx = revealedMain.has(x.id);
+    const ry = revealedMain.has(y.id);
+    if (rx !== ry) return rx ? -1 : 1; // 亮出的牌排最前
+    const ax = isMainC(x) ? [1, -x.power] : [2, SUB_SUIT_ORDER[x.suit] ?? 9, -x.power];
+    const ay = isMainC(y) ? [1, -y.power] : [2, SUB_SUIT_ORDER[y.suit] ?? 9, -y.power];
     return (ax[0] - ay[0]) || (ax[1] - ay[1]) || ((ax[2] || 0) - (ay[2] || 0));
   }).forEach((c, ci) => {
     const d = makeCard(c);
     if (dealing) d.style.animationDelay = (ci * 25) + 'ms';
+    if (revealedMain.has(c.id)) d.classList.add('revealed');
     if (handSel.includes(c.id)) d.classList.add('selected');
     if (kongIds.has(c.id)) d.classList.add('suggested');
     if (interactive) {

@@ -55,6 +55,7 @@ export class Game6 {
     this.currentSeat = null;
     this.revealOrder = null;
     this.revealDone = null;
+    this.revealCards = new Map();
     this.revealIdx = 0;
     this.result = null;
     this.rebellionLevel = 0;
@@ -155,6 +156,7 @@ export class Game6 {
       revealOrder: this.revealOrder ? this.revealOrder.slice() : null,
       revealIdx: this.revealIdx,
       revealDone: this.revealDone ? this.revealDone.slice() : null,
+      revealCards: Object.fromEntries(this.revealCards),
     };
   }
 
@@ -196,6 +198,7 @@ export class Game6 {
         this.revealed.set(c.id, level === 'wu' ? (c.suit === 'diamond' && c.rank === '5' ? 1000 : 998) : 996);
       }
       this.effectiveReveal = { seat, level, cardIds: cardIds.slice() };
+      this.revealCards.set(seat, cardIds.slice());
     }
     this.revealDone[seat] = true;
     if (this.revealDone.every(Boolean)) {
@@ -235,6 +238,7 @@ export class Game6 {
       this.effectiveReveal = { seat, level, cardIds: cardIds.slice() };
       for (const c of cards) this.revealed.set(c.id, 996);
     }
+    this.revealCards.set(seat, cardIds.slice());
   }
 
   /* ---------- 进贡（200 分制：80 换庄 / 120 单进贡 / 160 三进贡；对位配对） ---------- */

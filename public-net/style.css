@@ -206,6 +206,11 @@ button.suggest {
 #gameView.mode6 .seat.opponent { padding: 4px; font-size: 11px; }
 #gameView.mode6 .seatName { font-size: 12px; }
 #gameView.mode6 .card.back { width: 16px; height: 24px; }
+/* ---- 亮牌展示 ---- */
+#table .seat .card.mini { width: 22px; height: 32px; border-radius: 4px; cursor: default; }
+#table .seat .card.mini.scoring::after { width: 12px; height: 12px; font-size: 8px; top: -3px; right: -3px; }
+#gameView.mode6 #table .seat .card.mini { width: 18px; height: 26px; }
+.card.revealed { outline: 2px solid #7ec8ff; outline-offset: 1px; }
 #gameView.mode6 #handCards .card { width: 42px; height: 62px; }
 #gameView.mode6 .playCards .card { width: 34px; height: 48px; }
 #gameView.mode6 .bottomCards .card { width: 30px; height: 42px; }

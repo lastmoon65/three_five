@@ -77,6 +77,7 @@ export class Game {
     this.currentSeat = null;
     this.revealOrder = null;
     this.revealDone = null;
+    this.revealCards = new Map();
     this.revealIdx = 0;
     this.result = null;
     this.rebellion = false;
@@ -178,6 +179,7 @@ export class Game {
         this.effectiveReveal = { seat, level, cardIds: cardIds.slice() };
         for (const c of cards) this.revealed.set(c.id, 996);
       }
+      this.revealCards.set(seat, cardIds.slice());
     }
     this.revealDone[seat] = true;
     if (this.revealDone.every(Boolean)) {
@@ -207,6 +209,7 @@ export class Game {
       this.effectiveReveal = { seat, level, cardIds: cardIds.slice() };
       for (const c of cards) this.revealed.set(c.id, 996);
     }
+    this.revealCards.set(seat, cardIds.slice());
     // 庄家方亮番不造反，阶段停留在埋底，由庄家继续选牌扣底
   }
   enterTribute() {
@@ -628,6 +631,7 @@ export class Game {
       revealOrder: this.revealOrder ? this.revealOrder.slice() : null,
       revealIdx: this.revealIdx,
       revealDone: this.revealDone ? this.revealDone.slice() : null,
+      revealCards: Object.fromEntries(this.revealCards),
     };
   }
 }
