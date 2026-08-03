@@ -335,7 +335,7 @@ export class Game {
   responseLegal(cardIds) {
     const t = this.trick;
     if (!t || !t.dimension || t.plays.length === 0) return false;
-    if (cardIds.length === 0) return t.dimension === 'four_clear' && this.handScoring(this.currentSeat).length === 0;
+    if (cardIds.length === 0) return false;
     const cards = cardIds.map(id => this.cardById(id));
     const handSet = new Set(this.handIds(this.currentSeat));
     if (cardIds.length !== new Set(cardIds).size) return false;
@@ -361,9 +361,12 @@ export class Game {
     }
     if (dim === 'true_kong') return cards.length === Math.min(4, this.hands[this.currentSeat].length);
     if (dim === 'four_clear') {
-      const scoring = this.handScoring(this.currentSeat);
-      if (cards.length !== scoring.length) return false;
-      return cards.every(c => c.points > 0) && scoring.every(c => cards.includes(c));
+      // 四清响应固定 4 张（手牌不足则全出），必须包含分值最高的牌（10/K 先于 5）
+      const need = Math.min(4, this.hands[this.currentSeat].length);
+      if (cards.length !== need) return false;
+      const scoring = this.handScoring(this.currentSeat).slice().sort((a, b) => (b.points - a.points) || (b.power - a.power) || a.id.localeCompare(b.id));
+      const required = scoring.slice(0, Math.min(4, scoring.length)).map((c) => c.id);
+      return required.every((id) => cardIds.includes(id));
     }
     return false;
   }
@@ -441,8 +444,12 @@ export class Game {
       if (hand.length < 4) out.push({ cardIds: hand.map(c => c.id), dimension: 'true_kong' });
       else for (const comb of combosOf(hand, 4)) out.push({ cardIds: comb.map(c => c.id), dimension: 'true_kong' });
     } else if (dim === 'four_clear') {
-      const scoring = this.handScoring(seat);
-      out.push({ cardIds: scoring.map(c => c.id), dimension: 'four_clear' });
+      const hand = this.hands[seat];
+      const scoring = this.handScoring(seat).slice().sort((a, b) => (b.points - a.points) || (b.power - a.power) || a.id.localeCompare(b.id));
+      const need = Math.min(4, hand.length);
+      const ids = scoring.slice(0, Math.min(4, scoring.length)).map((c) => c.id);
+      for (const c of hand) { if (ids.length >= need) break; if (!ids.includes(c.id)) ids.push(c.id); }
+      out.push({ cardIds: ids, dimension: 'four_clear' });
     }
     return dedupe(out);
   }
@@ -462,8 +469,12 @@ export class Game {
     if (dim === 'fake_kong') return { count: 4, allowed: [...new Set(this.legalPlays().flatMap(p => p.cardIds))], dimension: 'fake_kong' };
     if (dim === 'true_kong') return { count: 4, allowed: this.handIds(seat), dimension: 'true_kong' };
     if (dim === 'four_clear') {
-      const scoring = this.handScoring(seat);
-      return { count: scoring.length, allowed: scoring.map(c => c.id), dimension: 'four_clear', auto: true };
+      const hand = this.hands[seat];
+      const scoring = this.handScoring(seat).slice().sort((a, b) => (b.points - a.points) || (b.power - a.power) || a.id.localeCompare(b.id));
+      const need = Math.min(4, hand.length);
+      const ids = scoring.slice(0, Math.min(4, scoring.length)).map((c) => c.id);
+      for (const c of hand) { if (ids.length >= need) break; if (!ids.includes(c.id)) ids.push(c.id); }
+      return { count: 4, allowed: ids, dimension: 'four_clear', auto: true };
     }
     return null;
   }

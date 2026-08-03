@@ -379,7 +379,7 @@ test('真杠领出：可被更大真杠压，跟杠可选', () => {
   assert.equal(g.state().trick.winnerSeat, 3); // KKKK > 7777
 });
 
-test('四清领出：其余家垫出全部值分牌，领出者赢', () => {
+test('四清领出：其余家垫出 4 张（优先高分），领出者赢', () => {
   const g = craft();
   startTrickAt(g, 0, [
     ['spade_4', 'club_4', 'diamond_4', 'heart_4', 'spade_5', 'spade_6', 'spade_7', 'spade_8', 'spade_9', 'spade_10', 'spade_K', 'club_3'],
@@ -389,13 +389,14 @@ test('四清领出：其余家垫出全部值分牌，领出者赢', () => {
   ]);
   g.play(['spade_4', 'club_4', 'diamond_4', 'heart_4']); // 领出 4444 四清
   assert.equal(g.state().trick.dimension, 'four_clear');
-  // 座位3 有 2 张分牌（heart_10、spade_5）必须全部垫出
+  // 座位3 有 2 张分牌（heart_10、spade_5）：必须垫 4 张且包含全部分牌
   assert.throws(() => g.play(['heart_10']), /ILLEGAL_RESPONSE/);
-  g.play(['heart_10', 'spade_5']);
-  // 座位2 无分牌 -> 不出
-  g.play([]);
-  // 座位1 无分牌 -> 不出
-  g.play([]);
+  assert.throws(() => g.play(['heart_10', 'spade_5']), /ILLEGAL_RESPONSE/, '不足 4 张被拒');
+  g.play(['heart_10', 'spade_5', 'club_A', 'diamond_A']);
+  // 座位2 无分牌：仍须垫 4 张
+  g.play(['spade_2', 'club_2', 'diamond_2', 'club_A']);
+  // 座位1 无分牌：仍须垫 4 张
+  g.play(['heart_3', 'spade_3', 'club_3', 'diamond_3']);
   const s = g.state();
   assert.equal(s.trick.winnerSeat, 0);
   assert.equal(s.trick.pointsWon, 15);

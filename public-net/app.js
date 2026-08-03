@@ -387,7 +387,7 @@ function renderGame() {
     const hints = game.playHints;
     if (hints && hints.auto) {
       const nb = document.createElement('button');
-      nb.textContent = '垫出全部分值牌（' + (hints.allowed || []).length + ' 张）';
+      nb.textContent = '垫出 ' + (hints.allowed || []).length + ' 张（优先高分）';
       nb.addEventListener('click', () => send({ type: 'play', data: { cardIds: hints.allowed } }));
       btns.appendChild(nb);
     } else if (!(hints && hints.count === 1)) {
