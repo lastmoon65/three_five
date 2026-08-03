@@ -11,8 +11,10 @@ let handKey = '';   // 选牌重置依据
 let gameSeq = 0;    // 快照序号过滤（丢弃过期快照）
 let mode = 'p4';      // 当前模式 p4|p6
 let swapSel = null;   // 6 人房换位选中座位
+let dealAnimRound = 0; // 发牌动画标记（每副首帧触发）
 
 const SUIT_SYM = { spade: '♠', heart: '♥', club: '♣', diamond: '♦', joker: '★' };
+const SEAT_EMOJI = ['🦊', '🐯', '🐼', '🦁', '🐸', '🐨'];
 const PHASE_LABEL = { reveal: '亮牌', tribute: '进贡/退贡', bury: '埋底', trick: '打牌', round_end: '结算', waiting: '房间' };
 
 function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
@@ -96,28 +98,41 @@ function toggleHandSel(id, maxSel) {
   renderGame();
 }
 
+function cardSvg(c) {
+  const rank = c.suit === 'joker' ? (String(c.rank).includes('big') ? '大' : '小') : String(c.rank);
+  const suit = c.suit === 'joker' ? '★' : (SUIT_SYM[c.suit] || '');
+  const color = (c.suit === 'heart' || c.suit === 'diamond' || c.suit === 'joker') ? '#c62828' : '#1a1a1a';
+  const center = c.suit === 'joker'
+    ? '<text x="50" y="94" font-size="48" fill="#6a1b9a" text-anchor="middle">★</text>'
+    : '<text x="50" y="94" font-size="56" fill="' + color + '" text-anchor="middle">' + suit + '</text>';
+  return '<svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">'
+    + '<rect x="2" y="2" width="96" height="146" rx="10" fill="#ffffff" stroke="#d8d8d8" stroke-width="1.5"/>'
+    + '<text x="13" y="27" font-size="23" font-weight="800" fill="' + color + '">' + rank + '</text>'
+    + '<text x="17" y="43" font-size="15" fill="' + color + '">' + suit + '</text>'
+    + '<text x="87" y="134" font-size="23" font-weight="800" fill="' + color + '" text-anchor="end" transform="rotate(180 87 129)">' + rank + '</text>'
+    + '<text x="83" y="118" font-size="15" fill="' + color + '" text-anchor="end" transform="rotate(180 83 113)">' + suit + '</text>'
+    + center
+    + '</svg>';
+}
 function makeCard(c, extra) {
   const d = document.createElement('div');
   d.className = 'card ' + ((c.suit === 'heart' || c.suit === 'diamond' || c.suit === 'joker') ? 'red' : 'black');
   if (c.suit === 'joker') d.classList.add('joker');
   if (c.points > 0) { d.classList.add('scoring'); d.dataset.pts = c.points; }
   if (extra) d.classList.add(extra);
-  const r = document.createElement('div'); r.className = 'cRank';
-  r.textContent = c.suit === 'joker' ? (String(c.rank).includes('big') ? '大' : '小') : String(c.rank);
-  const s = document.createElement('div'); s.className = 'cSuit';
-  s.textContent = c.suit === 'joker' ? '★' : (SUIT_SYM[c.suit] || '');
-  d.appendChild(r); d.appendChild(s);
+  d.innerHTML = cardSvg(c);
   return d;
 }
 
 function renderSeat(el, idx) {
   el.innerHTML = '';
+  el.classList.toggle('won', !!(game.trick && game.trick.winnerSeat === idx));
   const s = game.seats && game.seats[idx];
   const actorSeat = game.phase === 'reveal' ? game.revealActor : game.currentSeat;
   const n = s ? (game.handCounts[idx] ?? 0) : 0;
   const name = document.createElement('div');
   name.className = 'seatName' + (idx === actorSeat ? ' current' : '');
-  name.textContent = s ? s.nickname : '空位';
+  name.textContent = s ? (SEAT_EMOJI[idx % SEAT_EMOJI.length] + ' ' + s.nickname) : '空位';
   el.appendChild(name);
   const info = document.createElement('div');
   info.className = 'seatInfo';
@@ -201,9 +216,9 @@ function renderGame() {
   if (game.phase === 'trick' && game.trick) {
     const dim = game.trick.dimension ? (DIM_LABEL[game.trick.dimension] || game.trick.dimension) : '';
     if (game.trick.leaderSeat != null && seats[game.trick.leaderSeat]) infoParts.push(seats[game.trick.leaderSeat].nickname + ' 领出' + (dim ? '（' + dim + '）' : ''));
-    (game.trick.plays || []).forEach((pl) => {
+    (game.trick.plays || []).forEach((pl, pi) => {
       const wrap = document.createElement('div');
-      wrap.className = 'play';
+      wrap.className = 'play' + (pi === (game.trick.plays || []).length - 1 ? ' fresh' : '');
       const who = seats[pl.seat] ? seats[pl.seat].nickname : ('玩家' + (pl.seat + 1));
       const label = document.createElement('div');
       label.className = 'playSeat';
@@ -246,8 +261,12 @@ function renderGame() {
   const kongIds = new Set((game.kongPlays || []).flatMap((k) => k.cardIds || []));
   const handEl = $('handCards');
   handEl.innerHTML = '';
-  (game.myHand || []).slice().sort((x, y) => y.power - x.power).forEach((c) => {
+  const dealing = game.phase === 'reveal' && game.roundNo !== dealAnimRound;
+  if (dealing) dealAnimRound = game.roundNo;
+  handEl.classList.toggle('dealing', dealing);
+  (game.myHand || []).slice().sort((x, y) => y.power - x.power).forEach((c, ci) => {
     const d = makeCard(c);
+    if (dealing) d.style.animationDelay = (ci * 25) + 'ms';
     if (handSel.includes(c.id)) d.classList.add('selected');
     if (kongIds.has(c.id)) d.classList.add('suggested');
     if (interactive) {
