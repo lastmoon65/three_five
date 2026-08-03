@@ -497,6 +497,6 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const app = await startNetServer();
+  const app = await startNetServer({ port: Number(process.env.PORT) || 8090 });
   console.log('红心对决联网版已启动: http://localhost:' + app.port + '（单机版在 8080）');
 }

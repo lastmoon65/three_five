@@ -9,6 +9,8 @@ let game = null; // 当前对局 game_state 快照
 let handSel = [];   // 进贡/埋底阶段的选牌
 let handKey = '';   // 选牌重置依据
 let gameSeq = 0;    // 快照序号过滤（丢弃过期快照）
+let mode = 'p4';      // 当前模式 p4|p6
+let swapSel = null;   // 6 人房换位选中座位
 
 const SUIT_SYM = { spade: '♠', heart: '♥', club: '♣', diamond: '♦', joker: '★' };
 const PHASE_LABEL = { reveal: '亮牌', tribute: '进贡/退贡', bury: '埋底', trick: '打牌', round_end: '结算', waiting: '房间' };
@@ -26,24 +28,41 @@ function cardLabel(c) {
   return (c.rank || '') + (SUIT_SYM[c.suit] || '');
 }
 
-function showLogin(msg = '') {
-  $('loginView').classList.remove('hidden');
+function showMode() {
+  $('loginView').classList.add('hidden');
   $('hallView').classList.add('hidden');
   $('roomView').classList.add('hidden');
+  $('gameView').classList.add('hidden');
+  $('modeView').classList.remove('hidden');
+}
+
+function showLogin(msg = '') {
+  $('modeView').classList.add('hidden');
+  $('hallView').classList.add('hidden');
+  $('roomView').classList.add('hidden');
+  $('gameView').classList.add('hidden');
+  $('loginView').classList.remove('hidden');
   $('loginMsg').textContent = msg;
 }
 
 function showHall() {
   room = null;
+  $('modeView').classList.add('hidden');
   $('loginView').classList.add('hidden');
   $('roomView').classList.add('hidden');
+  $('gameView').classList.add('hidden');
   $('hallView').classList.remove('hidden');
   $('joinPanel').classList.add('hidden');
+  $('modeLabel').textContent = mode === 'p6' ? '6 人模式（两副牌）' : '4 人模式（一副牌）';
+  $('joinRoomInput').placeholder = mode === 'p6' ? '6 位房间号' : '4 位房间号';
+  $('hallTip').textContent = (mode === 'p6' ? 6 : 4) + ' 人坐满并全部准备后，房主可开始游戏';
 }
 
 function showRoom() {
+  $('modeView').classList.add('hidden');
   $('loginView').classList.add('hidden');
   $('hallView').classList.add('hidden');
+  $('gameView').classList.add('hidden');
   $('roomView').classList.remove('hidden');
 }
 
@@ -106,7 +125,8 @@ function renderSeat(el, idx) {
   if (game.dealerIndex === idx) parts.push('庄家');
   if (s && idx % 2 === game.me % 2) parts.push('队友');
   if (s && !s.connected) parts.push('离线');
-  if (game.effectiveReveal && game.effectiveReveal.seat === idx) parts.push('已亮' + (game.effectiveReveal.level === 'wu' ? '五反' : '三反'));
+  if (game.revealBy && game.revealBy[idx]) parts.push('已亮' + (game.revealBy[idx] === 'wu' ? '五反' : '三反'));
+  else if (game.effectiveReveal && game.effectiveReveal.seat === idx) parts.push('已亮' + (game.effectiveReveal.level === 'wu' ? '五反' : '三反'));
   info.textContent = parts.join(' · ');
   el.appendChild(info);
   const backs = document.createElement('div');
@@ -146,9 +166,23 @@ function renderGame() {
     const dTeam = game.dealerIndex % 2;
     $('gScore').textContent = '我队 ' + game.scores[dTeam] + ' : ' + game.scores[1 - dTeam] + ' 对方';
   } else $('gScore').textContent = '';
-  renderSeat($('seatTop'), (me + 2) % 4);
-  renderSeat($('seatLeft'), (me + 1) % 4);
-  renderSeat($('seatRight'), (me + 3) % 4);
+  const is6 = (game.handCounts || []).length === 6;
+  $('gameView').classList.toggle('mode6', is6);
+  if (is6) {
+    renderSeat($('seatTopL'), (me + 4) % 6);
+    renderSeat($('seatTop'), (me + 3) % 6);
+    renderSeat($('seatTopR'), (me + 2) % 6);
+    renderSeat($('seatLeft'), (me + 5) % 6);
+    renderSeat($('seatRight'), (me + 1) % 6);
+    $('seatTopL').classList.remove('hidden');
+    $('seatTopR').classList.remove('hidden');
+  } else {
+    renderSeat($('seatTop'), (me + 2) % 4);
+    renderSeat($('seatLeft'), (me + 1) % 4);
+    renderSeat($('seatRight'), (me + 3) % 4);
+    $('seatTopL').classList.add('hidden');
+    $('seatTopR').classList.add('hidden');
+  }
   const trickCards = $('trickCards');
   const trickResult = $('trickResult');
   const bottomBar = $('bottomBar');
@@ -162,6 +196,7 @@ function renderGame() {
     infoParts.push(who + ' 进贡 ' + cardLabel(game.lastGive.card));
   }
   if (game.phase === 'reveal') infoParts.push('亮牌阶段：三张3=三反 / 三张5=五反，闲家亮出可造反');
+  if (game.rebellionLevel > 0) infoParts.push('造反 ' + game.rebellionLevel + ' 人，本副免进贡');
   if (game.phase === 'trick' && game.trick) {
     const dim = game.trick.dimension ? (DIM_LABEL[game.trick.dimension] || game.trick.dimension) : '';
     if (game.trick.leaderSeat != null && seats[game.trick.leaderSeat]) infoParts.push(seats[game.trick.leaderSeat].nickname + ' 领出' + (dim ? '（' + dim + '）' : ''));
@@ -264,9 +299,13 @@ function renderGame() {
       btns.appendChild(c);
     }
   } else if (myTurnPlay) {
+    const seenKong = new Set();
     (game.kongPlays || []).forEach((k) => {
+      if (seenKong.has(k.label)) return; // 8 张同点拆两副：同款只出一个建议按钮
+      seenKong.add(k.label);
       const b = document.createElement('button');
       b.textContent = '🔥 ' + k.label;
+      b.className = 'suggest';
       b.addEventListener('click', () => send({ type: 'play', data: { cardIds: k.cardIds } }));
       btns.appendChild(b);
     });
@@ -322,15 +361,29 @@ function renderRoom() {
       if (seat.ready) div.textContent += '（已准备）';
       if (!seat.connected) div.textContent += '（离线）';
       if (seat.userId === myName) div.classList.add('me');
+      if (seat.seatId === swapSel) div.classList.add('sel');
+      if (room.mode === 'p6' && room.phase === 'waiting' && seat.seatId !== room.hostSeatId) {
+        div.classList.add('swappable');
+        div.addEventListener('click', () => {
+          if (swapSel == null) { swapSel = seat.seatId; renderRoom(); }
+          else if (swapSel === seat.seatId) { swapSel = null; renderRoom(); }
+          else { send({ type: 'swap_seats', data: { a: swapSel, b: seat.seatId } }); swapSel = null; }
+        });
+      }
     }
     seatsEl.appendChild(div);
   });
+  const need = room.mode === 'p6' ? 6 : 4;
   const meSeat = room.seats.find((s) => s && s.userId === myName);
-  const allReady = room.seats.every((s) => s && s.ready && s.connected) && room.seats.length === 4;
+  const allReady = room.seats.length === need && room.seats.every((s) => s && s.ready && s.connected);
   $('readyBtn').textContent = (meSeat && meSeat.ready) ? '取消准备' : '准备';
   $('startGameBtn').classList.toggle('hidden', !(room.hostSeatId != null && room.seats[room.hostSeatId] && room.seats[room.hostSeatId].userId === myName));
   $('startGameBtn').disabled = !allReady;
-  $('roomTip').textContent = allReady ? '4 人在线且已准备，房主可开始游戏（M3 接入）' : `等待玩家就绪（在线已准备 ${room.seats.filter((s) => s && s.ready && s.connected).length}/4）`;
+  $('swapBtn').classList.toggle('hidden', room.mode === 'p6');
+  $('roomMode').textContent = room.mode === 'p6' ? '6 人模式' : '4 人模式';
+  $('roomTip').textContent = allReady
+    ? need + ' 人在线且已准备，房主可开始游戏'
+    : `等待玩家就绪（在线已准备 ${room.seats.filter((s) => s && s.ready && s.connected).length}/${need}）` + (room.mode === 'p6' ? ' · 点击座位互换（房主固定）' : '');
 }
 
 function handle(msg) {
@@ -345,7 +398,7 @@ function handle(msg) {
       $('connMsg').textContent = '已重连，恢复对局…';
       renderGame();
     } else {
-      showHall();
+      showMode();
     }
   } else if (msg.type === 'presence') {
     renderOnline(d.online);
@@ -415,6 +468,9 @@ $('loginBtn').addEventListener('click', () => {
   if (!username || !password) { showLogin('请输入用户名和密码'); return; }
   connect({ username, password });
 });
+$('mode4Btn').addEventListener('click', () => { mode = 'p4'; showHall(); });
+$('mode6Btn').addEventListener('click', () => { mode = 'p6'; showHall(); });
+$('modeSwitchBtn').addEventListener('click', () => showMode());
 $('logoutBtn').addEventListener('click', () => {
   token = null;
   localStorage.removeItem(TOKEN_KEY);
@@ -422,12 +478,13 @@ $('logoutBtn').addEventListener('click', () => {
   if (ws) ws.close();
   showLogin();
 });
-$('createRoomBtn').addEventListener('click', () => send({ type: 'create_room' }));
+$('createRoomBtn').addEventListener('click', () => send({ type: 'create_room', data: { mode } }));
 $('joinRoomBtn').addEventListener('click', () => $('joinPanel').classList.remove('hidden'));
 $('joinCancelBtn').addEventListener('click', () => $('joinPanel').classList.add('hidden'));
 $('joinConfirmBtn').addEventListener('click', () => {
   const id = $('joinRoomInput').value.trim();
-  if (!/^\d{6}$/.test(id)) { $('connMsg').textContent = '请输入 6 位房间号'; return; }
+  const pat = mode === 'p6' ? /^\d{6}$/ : /^\d{4}$/;
+  if (!pat.test(id)) { $('connMsg').textContent = mode === 'p6' ? '请输入 6 位房间号' : '请输入 4 位房间号'; return; }
   $('joinPanel').classList.add('hidden');
   send({ type: 'join_room', data: { roomId: id } });
 });

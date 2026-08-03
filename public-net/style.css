@@ -8,7 +8,7 @@ body {
   overflow-x: hidden;
 }
 #app { width: 100%; max-width: 420px; margin: 0 auto; padding: 20px; }
-#loginView, #hallView { background: rgba(0,0,0,0.22); border-radius: 16px; padding: 28px 22px; text-align: center; }
+#loginView, #hallView, #modeView { background: rgba(0,0,0,0.22); border-radius: 16px; padding: 28px 22px; text-align: center; }
 h1 { font-size: 24px; margin-bottom: 4px; }
 .sub { color: #d7e8dd; font-size: 13px; margin-bottom: 20px; }
 input {
@@ -23,7 +23,7 @@ button.ghost { background: transparent; border: 1px solid #cfe6d8; color: #eafff
 #loginMsg { min-height: 20px; margin-top: 10px; color: #ffd9a0; font-size: 14px; }
 .tip { margin-top: 14px; color: #cfe6d8; font-size: 12px; }
 .hidden { display: none !important; }
-.hallHead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; font-size: 15px; }
+.hallHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 15px; flex-wrap: wrap; }
 .panel { background: rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; text-align: left; margin-bottom: 14px; }
 .panel h3 { font-size: 14px; color: #d7e8dd; margin-bottom: 10px; }
 #onlineList { list-style: none; }
@@ -40,6 +40,9 @@ button.ghost { background: transparent; border: 1px solid #cfe6d8; color: #eafff
 }
 .seatRow.empty { color: #9fc4ae; font-style: italic; }
 .seatRow.me { outline: 1px solid #f6b93b; }
+.seatRow.swappable { cursor: pointer; }
+.seatRow.swappable:hover { outline: 1px solid #ffd76a; }
+.seatRow.sel { outline: 2px solid #f6b93b; }
 #roomView .hallHead { margin-bottom: 14px; }
 #startGameBtn:disabled { opacity: 0.45; cursor: not-allowed; }
 
@@ -53,8 +56,10 @@ button.ghost { background: transparent; border: 1px solid #cfe6d8; color: #eafff
   grid-template-rows: auto 1fr auto;
   gap: 6px; padding: 8px; min-height: 300px;
 }
-#seatTop { grid-column: 2; }
-#seatLeft { grid-row: 2; }
+#seatTopL { grid-row: 1; grid-column: 1; }
+#seatTop { grid-row: 1; grid-column: 2; }
+#seatTopR { grid-row: 1; grid-column: 3; }
+#seatLeft { grid-row: 2; grid-column: 1; }
 #seatRight { grid-row: 2; grid-column: 3; }
 #trick { grid-row: 2; grid-column: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
 
@@ -151,9 +156,21 @@ button.suggest {
   50% { transform: scale(1.05); }
 }
 
+/* ---- 6 人模式适配 ---- */
+#gameView.mode6 .seat.opponent { padding: 4px; font-size: 11px; }
+#gameView.mode6 .seatName { font-size: 12px; }
+#gameView.mode6 .card.back { width: 16px; height: 24px; }
+#gameView.mode6 #handCards .card { width: 42px; height: 62px; }
+#gameView.mode6 #handCards .cRank { font-size: 17px; }
+#gameView.mode6 #handCards .cSuit { font-size: 13px; }
+#gameView.mode6 .playCards .card { width: 34px; height: 48px; }
+#gameView.mode6 .playCards .cRank { font-size: 14px; }
+#gameView.mode6 .playCards .cSuit { font-size: 11px; }
+
 @media (max-width: 380px) {
   .card { width: 44px; height: 66px; }
   .card .cRank { font-size: 18px; }
   .card .cSuit { font-size: 14px; }
   .bottomCards .card { width: 26px; height: 38px; }
+  #gameView.mode6 #handCards .card { width: 36px; height: 54px; }
 }

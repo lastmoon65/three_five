@@ -18,9 +18,18 @@
       <p class="tip">朋友账号：erxiao / chendao / wangzong / yuyu / jingge / tingjie / caoyi / guoxiang / niebo，密码 123456</p>
     </div>
 
+    <div id="modeView" class="hidden">
+      <h1>红心对决 · 联网版</h1>
+      <p class="sub">选择模式开始</p>
+      <button id="mode4Btn">4 人模式（一副牌）</button>
+      <button id="mode6Btn">6 人模式（两副牌）</button>
+      <p class="tip">两种模式房间不互通</p>
+    </div>
+
     <div id="hallView" class="hidden">
       <header class="hallHead">
-        <span>欢迎，<b id="me"></b></span>
+        <span>欢迎，<b id="me"></b> · <span id="modeLabel"></span></span>
+        <button id="modeSwitchBtn" class="ghost">切换模式</button>
         <button id="logoutBtn" class="ghost">退出</button>
       </header>
       <section class="actions">
@@ -28,11 +37,11 @@
         <button id="joinRoomBtn">加入房间</button>
       </section>
       <section id="joinPanel" class="panel hidden">
-        <input id="joinRoomInput" placeholder="6 位房间号" inputmode="numeric" maxlength="6">
+        <input id="joinRoomInput" placeholder="4 位房间号" inputmode="numeric" maxlength="6">
         <button id="joinConfirmBtn">加入</button>
         <button id="joinCancelBtn" class="ghost">取消</button>
       </section>
-      <p class="tip">4 人坐满并全部准备后，房主可开始游戏</p>
+      <p class="tip" id="hallTip"></p>
       <section class="panel">
         <h3>在线玩家</h3>
         <ul id="onlineList"></ul>
@@ -47,7 +56,9 @@
         <button id="gResetBtn" class="ghost">重置</button>
       </header>
       <div id="table">
+        <div id="seatTopL" class="seat opponent hidden"></div>
         <div id="seatTop" class="seat opponent"></div>
+        <div id="seatTopR" class="seat opponent hidden"></div>
         <div id="seatLeft" class="seat opponent"></div>
         <section id="trick">
           <div id="trickInfo"></div>
@@ -69,7 +80,7 @@
 
     <div id="roomView" class="hidden">
       <header class="hallHead">
-        <span>房间 <b id="roomNum"></b></span>
+        <span>房间 <b id="roomNum"></b> · <span id="roomMode"></span></span>
         <button id="copyRoomBtn" class="ghost">复制房号</button>
       </header>
       <div id="seats"></div>

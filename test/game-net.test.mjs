@@ -182,10 +182,12 @@ async function skipAllReveals(users) {
     const actor = latest.data.revealActor;
     if (actor == null) break;
     const u = users.find((x) => x.seat === actor);
+    // 等行动者本人收到"轮到自己"的状态（seq 不低于宿主侧快照），避免用滞后快照发指令
+    const st = await waitNewestGame(u.inbox, (d) => d.phase === 'reveal' && d.revealActor === actor && d.seq >= latest.data.seq, 8000);
     send(u.ws, { type: 'reveal', data: { cardIds: null } });
     guard++;
     // 等待最新状态推进（行动者变更或离开亮牌阶段）再继续
-    await waitNewestGame(users[0].inbox, (d) => d.phase !== 'reveal' || d.revealActor !== actor, 8000);
+    await waitNewestGame(users[0].inbox, (d) => d.seq > st.data.seq && (d.phase !== 'reveal' || d.revealActor !== actor), 8000);
   }
   await waitNewestGame(users[0].inbox, (d) => d.phase !== 'reveal', 8000);
 }
@@ -199,9 +201,10 @@ async function reachBury(users, roomId) {
   for (let i = 0; i < pairs.length; i++) {
     const pair = pairs[i];
     const takerUser = users.find((u) => u.seat === pair.taker);
-    const ts = await waitNewestGame(takerUser.inbox, (d) => d.phase === 'tribute' && d.tributeState && d.tributeState.step === 'take' && d.tributeState.pairIdx === i);
+    const ts = await waitNewestGame(takerUser.inbox, (d) => d.phase === 'tribute' && d.tributeState && d.tributeState.step === 'take' && d.tributeState.pairIdx === i && d.seq >= st.data.seq);
     const card = ts.data.myHand.find(isMainCard) || ts.data.myHand[0];
     send(takerUser.ws, { type: 'tribute_take', data: { cardId: card.id } });
+    await waitNewestGame(users[0].inbox, (d) => d.seq > ts.data.seq && (d.phase !== 'tribute' || d.tributeState.pairIdx > i), 8000);
   }
   await waitNewestGame(users[0].inbox, (d) => d.phase === 'bury');
 }
@@ -277,24 +280,22 @@ async function reachTrick(users) {
   const dst = await waitNewestGame(dealerUser.inbox, (d) => d.phase === 'bury' && d.me === dealer);
   const buryIds = dst.data.myHand.filter((c) => c.points === 0).slice(0, 6).map((c) => c.id);
   send(dealerUser.ws, { type: 'bury', data: { cardIds: buryIds } });
-  await waitNewestGame(users[0].inbox, (d) => d.phase === 'trick');
+  await waitNewestGame(users[0].inbox, (d) => d.seq > dst.data.seq && d.phase === 'trick', 8000);
 }
 
 async function autoPlayToEnd(users) {
   let guard = 0;
   while (guard < 400) {
-    const cur = (await waitNewestGame(users[0].inbox, () => true)).data.currentSeat;
+    const curState = await waitNewestGame(users[0].inbox, () => true);
+    const cur = curState.data.currentSeat;
     const u = users.find((x) => x.seat === cur);
     if (!u) break;
-    const st = await waitNewestGame(u.inbox, (d) => d.currentSeat === cur);
+    const st = await waitNewestGame(u.inbox, (d) => d.currentSeat === cur && d.seq >= curState.data.seq);
     if (st.data.phase !== 'trick' || !st.data.legalPlays || !st.data.legalPlays.length) break;
     const before = (st.data.trick ? st.data.trick.plays.length : 0) + ':' + st.data.currentSeat;
     send(u.ws, { type: 'play', data: { cardIds: st.data.legalPlays[0].cardIds } });
     guard++;
-    await waitNewestGame(users[0].inbox, (d) => {
-      const now = (d.trick ? d.trick.plays.length : 0) + ':' + d.currentSeat;
-      return d.phase !== 'trick' || now !== before;
-    }, 8000);
+    await waitNewestGame(users[0].inbox, (d) => d.seq > st.data.seq && (d.phase !== 'trick' || ((d.trick ? d.trick.plays.length : 0) + ':' + d.currentSeat) !== before), 8000);
   }
   return (await waitNewestGame(users[0].inbox, (d) => d.phase === 'round_end', 15000)).data;
 }
