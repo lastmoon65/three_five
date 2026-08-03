@@ -324,7 +324,7 @@ export class Game6 {
   }
 
   singleResponseOk(card, lead) {
-    const cat = isChangZhu(lead) ? 'main' : followSuit(lead);
+    const cat = (isChangZhu(lead) || lead.suit === 'heart') ? 'main' : followSuit(lead); // 红桃主花色：领出红桃按主牌处理
     if (cat === 'main') {
       if (this.handMain(this.currentSeat).length > 0) return isMain(card) || this.isRevealed(card);
       return true;
@@ -532,7 +532,7 @@ export class Game6 {
 
   resolveSingle(plays) {
     const lead = this.cardById(plays[0].cardIds[0]);
-    const cat = isChangZhu(lead) ? 'main' : followSuit(lead);
+    const cat = (isChangZhu(lead) || lead.suit === 'heart') ? 'main' : followSuit(lead); // 红桃主花色：领出红桃按主牌处理
     let best = null;
     plays.forEach((p, i) => {
       if (p.cardIds.length === 0) return;
