@@ -18,7 +18,7 @@ let pendingState = null; // 停顿期间暂存的最新状态
 
 const SUIT_SYM = { spade: '♠', heart: '♥', club: '♣', diamond: '♦', joker: '★' };
 const SEAT_EMOJI = ['🦊', '🐯', '🐼', '🦁', '🐸', '🐨'];
-const SUIT_ORDER = { spade: 0, heart: 1, club: 2, diamond: 3, joker: 4 }; // 手牌按花色排列（同花色内按牌力）
+const SUB_SUIT_ORDER = { diamond: 0, club: 1, spade: 2 }; // 副牌分组顺序：方块→梅花→黑桃
 const PHASE_LABEL = { reveal: '亮牌', tribute: '进贡/退贡', bury: '埋底', trick: '打牌', round_end: '结算', waiting: '房间' };
 
 function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
@@ -283,7 +283,14 @@ function renderGame() {
   const dealing = game.phase === 'reveal' && game.roundNo !== dealAnimRound;
   if (dealing) dealAnimRound = game.roundNo;
   handEl.classList.toggle('dealing', dealing);
-  (game.myHand || []).slice().sort((x, y) => (SUIT_ORDER[x.suit] - SUIT_ORDER[y.suit]) || (y.power - x.power)).forEach((c, ci) => {
+  const revealedMain = new Set((game.revealed || []).map((r) => r.id));
+  const isMainC = (c) => c.suit === 'heart' || c.suit === 'joker' || (c.suit === 'diamond' && c.rank === '5') || (c.suit === 'spade' && c.rank === 'Q') || c.rank === 'J' || c.rank === '2' || revealedMain.has(c.id);
+  // 排序：主牌（牌力从大到小）→ 副牌按 方块/梅花/黑桃 分组（组内牌力从大到小）
+  (game.myHand || []).slice().sort((x, y) => {
+    const ax = isMainC(x) ? [0, -x.power] : [1, SUB_SUIT_ORDER[x.suit] ?? 9, -x.power];
+    const ay = isMainC(y) ? [0, -y.power] : [1, SUB_SUIT_ORDER[y.suit] ?? 9, -y.power];
+    return (ax[0] - ay[0]) || (ax[1] - ay[1]) || ((ax[2] || 0) - (ay[2] || 0));
+  }).forEach((c, ci) => {
     const d = makeCard(c);
     if (dealing) d.style.animationDelay = (ci * 25) + 'ms';
     if (handSel.includes(c.id)) d.classList.add('selected');
