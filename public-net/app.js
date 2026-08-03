@@ -21,7 +21,22 @@ const SEAT_EMOJI = ['🦊', '🐯', '🐼', '🦁', '🐸', '🐨'];
 const SUB_SUIT_ORDER = { diamond: 0, club: 1, spade: 2 }; // 副牌分组顺序：方块→梅花→黑桃
 const PHASE_LABEL = { reveal: '亮牌', tribute: '进贡/退贡', bury: '埋底', trick: '打牌', round_end: '结算', waiting: '房间' };
 
-function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+function send(obj) {
+  if (!ws || ws.readyState !== 1) return;
+  if (obj.type !== 'auth') clearWinHold(); // 用户主动操作：立即结束赢墩停顿，防止看到旧牌
+  ws.send(JSON.stringify(obj));
+}
+// 解除赢墩停顿并应用最新状态
+function clearWinHold() {
+  if (winHoldUntil > 0 || pendingState) {
+    winHoldUntil = 0;
+    if (pendingState) {
+      const p = pendingState;
+      pendingState = null;
+      handle({ type: 'game_state', data: p });
+    }
+  }
+}
 let noticeTimer = null;
 function notice(msg) {
   $('connMsg').textContent = msg;
@@ -93,6 +108,7 @@ function selectedPlay() {
 }
 
 function toggleHandSel(id, maxSel) {
+  clearWinHold(); // 点牌时若有停顿先解除，避免在旧牌面上选牌
   const i = handSel.indexOf(id);
   if (i >= 0) handSel.splice(i, 1);
   else {
