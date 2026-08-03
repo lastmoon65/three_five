@@ -126,7 +126,7 @@ button.ghost { background: rgba(255,255,255,0.08); border: 1px solid #cfe6d8; co
 @keyframes playIn {
   0% { transform: scale(0.6); opacity: 0.3; }
   100% { transform: scale(1); opacity: 1; }
-}#trickCards.winning .play { animation: flyToWin .9s ease .15s forwards; }
+}#trickCards.winning .play { animation: flyToWin 1s ease 2.5s forwards; } /* 先停 2.5 秒看清牌面，再飞向赢家 */
 @keyframes flyToWin {
   to { transform: translate(var(--win-x, 0px), var(--win-y, -60px)) scale(0.5); opacity: 0; }
 }

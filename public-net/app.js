@@ -469,11 +469,11 @@ function handle(msg) {
     // 本墩刚决出胜负：停顿 2 秒展示赢家 + 飞牌动画
     if (d.trick && d.trick.winnerSeat != null && d.seq !== winHoldSeq) {
       winHoldSeq = d.seq;
-      winHoldUntil = Date.now() + 2200;
+      winHoldUntil = Date.now() + 5000;
       setTimeout(() => {
         winHoldUntil = 0;
         if (pendingState) { const p = pendingState; pendingState = null; handle({ type: 'game_state', data: p }); }
-      }, 2400);
+      }, 5200);
     }
   } else if (msg.type === 'room_dissolved') {
     game = null;
