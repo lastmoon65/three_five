@@ -12,9 +12,13 @@ let gameSeq = 0;    // 快照序号过滤（丢弃过期快照）
 let mode = 'p4';      // 当前模式 p4|p6
 let swapSel = null;   // 6 人房换位选中座位
 let dealAnimRound = 0; // 发牌动画标记（每副首帧触发）
+let winHoldUntil = 0;   // 赢墩展示停顿截止时间
+let winHoldSeq = 0;     // 已展示的赢墩 seq
+let pendingState = null; // 停顿期间暂存的最新状态
 
 const SUIT_SYM = { spade: '♠', heart: '♥', club: '♣', diamond: '♦', joker: '★' };
 const SEAT_EMOJI = ['🦊', '🐯', '🐼', '🦁', '🐸', '🐨'];
+const SUIT_ORDER = { spade: 0, heart: 1, club: 2, diamond: 3, joker: 4 }; // 手牌按花色排列（同花色内按牌力）
 const PHASE_LABEL = { reveal: '亮牌', tribute: '进贡/退贡', bury: '埋底', trick: '打牌', round_end: '结算', waiting: '房间' };
 
 function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
@@ -168,6 +172,15 @@ function renderSeat(el, idx) {
   }
 }
 
+function winnerDir(g, winSeat) {
+  const me = g.me;
+  const is6 = (g.handCounts || []).length === 6;
+  const map = is6
+    ? { [(me + 4) % 6]: [-85, -55], [(me + 3) % 6]: [0, -70], [(me + 2) % 6]: [85, -55], [(me + 5) % 6]: [-110, 0], [(me + 1) % 6]: [110, 0], [me]: [0, 120] }
+    : { [(me + 2) % 4]: [0, -70], [(me + 1) % 4]: [-110, 0], [(me + 3) % 4]: [110, 0], [me]: [0, 120] };
+  return map[winSeat] || [0, -70];
+}
+
 function renderGame() {
   if (!game) return;
   $('loginView').classList.add('hidden');
@@ -203,6 +216,7 @@ function renderGame() {
   const trickResult = $('trickResult');
   const bottomBar = $('bottomBar');
   trickCards.innerHTML = '';
+  trickCards.classList.remove('winning');
   trickResult.textContent = '';
   trickResult.classList.remove('flash');
   bottomBar.innerHTML = '';
@@ -231,6 +245,11 @@ function renderGame() {
       trickCards.appendChild(wrap);
     });
     if (game.trick.winnerSeat != null) {
+      // 本墩已决出：牌飞向赢家
+      const [wx, wy] = winnerDir(game, game.trick.winnerSeat);
+      trickCards.classList.add('winning');
+      trickCards.style.setProperty('--win-x', wx + 'px');
+      trickCards.style.setProperty('--win-y', wy + 'px');
       const who = seats[game.trick.winnerSeat] ? seats[game.trick.winnerSeat].nickname : '?';
       trickResult.textContent = who + ' 赢墩' + (game.trick.pointsWon ? '，得 ' + game.trick.pointsWon + ' 分' : '');
       trickResult.classList.add('flash');
@@ -264,7 +283,7 @@ function renderGame() {
   const dealing = game.phase === 'reveal' && game.roundNo !== dealAnimRound;
   if (dealing) dealAnimRound = game.roundNo;
   handEl.classList.toggle('dealing', dealing);
-  (game.myHand || []).slice().sort((x, y) => y.power - x.power).forEach((c, ci) => {
+  (game.myHand || []).slice().sort((x, y) => (SUIT_ORDER[x.suit] - SUIT_ORDER[y.suit]) || (y.power - x.power)).forEach((c, ci) => {
     const d = makeCard(c);
     if (dealing) d.style.animationDelay = (ci * 25) + 'ms';
     if (handSel.includes(c.id)) d.classList.add('selected');
@@ -443,9 +462,19 @@ function handle(msg) {
     else renderRoom();
   } else if (msg.type === 'game_state') {
     if (d.seq != null && gameSeq > 0 && d.seq <= gameSeq) return; // 丢弃过期快照
+    if (Date.now() < winHoldUntil) { pendingState = d; return; } // 赢墩停顿期间暂存
     gameSeq = d.seq != null ? d.seq : gameSeq;
     game = d;
     renderGame();
+    // 本墩刚决出胜负：停顿 2 秒展示赢家 + 飞牌动画
+    if (d.trick && d.trick.winnerSeat != null && d.seq !== winHoldSeq) {
+      winHoldSeq = d.seq;
+      winHoldUntil = Date.now() + 2200;
+      setTimeout(() => {
+        winHoldUntil = 0;
+        if (pendingState) { const p = pendingState; pendingState = null; handle({ type: 'game_state', data: p }); }
+      }, 2400);
+    }
   } else if (msg.type === 'room_dissolved') {
     game = null;
     $('connMsg').textContent = '房间已解散，返回大厅';

@@ -126,7 +126,11 @@ button.ghost { background: rgba(255,255,255,0.08); border: 1px solid #cfe6d8; co
 @keyframes playIn {
   0% { transform: scale(0.6); opacity: 0.3; }
   100% { transform: scale(1); opacity: 1; }
+}#trickCards.winning .play { animation: flyToWin .9s ease .15s forwards; }
+@keyframes flyToWin {
+  to { transform: translate(var(--win-x, 0px), var(--win-y, -60px)) scale(0.5); opacity: 0; }
 }
+#trickResult.flash { text-shadow: 0 0 10px rgba(255,215,106,0.9); }
 .playSeat { font-size: 10px; opacity: .85; }
 .playCards { display: flex; gap: 2px; }
 #trickResult { font-size: 13px; color: #ffd76a; min-height: 18px; text-align: center; font-weight: 600; }
