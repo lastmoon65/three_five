@@ -2,6 +2,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { WebSocketServer } from 'ws';
@@ -20,6 +21,15 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 const NICK = new Map(ACCOUNTS.map((a) => [a.username, a.nickname]));
+const LOG_DIR = join(fileURLToPath(new URL('.', import.meta.url)), 'logs');
+function logError(tag, err) {
+  try {
+    mkdirSync(LOG_DIR, { recursive: true });
+    appendFileSync(join(LOG_DIR, 'server.log'), `[${new Date().toISOString()}] ${tag}: ${(err && err.stack) || err}\n`);
+  } catch { /* 日志失败不影响服务 */ }
+}
+process.on('uncaughtException', (e) => logError('uncaughtException', e));
+process.on('unhandledRejection', (e) => logError('unhandledRejection', e));
 
 export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30000 } = {}) {
   const root = normalize(staticRoot || join(fileURLToPath(new URL('.', import.meta.url)), 'public-net'));
@@ -306,6 +316,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
     ws.on('message', (raw) => {
+      try {
       let msg;
       try { msg = JSON.parse(raw.toString()); } catch { err(ws, 'BAD_JSON'); return; }
       if (!msg || typeof msg !== 'object' || !msg.type) { err(ws, 'BAD_MESSAGE'); return; }
@@ -486,6 +497,10 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         return;
       }
       err(ws, 'UNKNOWN_TYPE', '未知消息类型: ' + msg.type);
+      } catch (e) {
+        logError('message-handler', e);
+        try { err(ws, 'SERVER_ERROR', '服务器内部错误'); } catch { /* 忽略 */ }
+      }
     });
 
     ws.on('close', () => {
@@ -509,6 +524,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
   });
 
   await new Promise((resolve) => server.listen(port, resolve));
+  logError('info', 'server started on port ' + port);
   return {
     server,
     wss,
