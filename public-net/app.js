@@ -181,7 +181,7 @@ function renderSeat(el, idx) {
     .map((id) => revealedById.get(id)).filter(Boolean);
   seatRevealed.forEach((c) => backs.appendChild(makeCard(c, 'mini')));
   const hidden = n - seatRevealed.length;
-  const show = Math.min(hidden, 8);
+  const show = Math.min(hidden, 6);
   for (let i = 0; i < show; i++) {
     const b = document.createElement('div');
     b.className = 'card back';
