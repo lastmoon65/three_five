@@ -241,8 +241,8 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       revealActor,
       seats: roomDTO(room).seats,
       handCounts: s.handCounts,
-      myHand: s.hands[seatIdx].map((c) => ({ ...c })),
-      revealed: s.revealed.map((r) => { const c = g.cardById(r.id); return { id: c.id, suit: c.suit, rank: c.rank, power: c.power, points: c.points }; }),
+      myHand: s.hands[seatIdx].map((c) => ({ ...c, power: g.powerOf(c) })), // power 含亮牌加成
+      revealed: s.revealed.map((r) => { const c = g.cardById(r.id); return { id: c.id, suit: c.suit, rank: c.rank, power: g.powerOf(c), points: c.points }; }), // power 含亮牌加成
       effectiveReveal: s.effectiveReveal ? { ...s.effectiveReveal, cardIds: s.effectiveReveal.cardIds.slice() } : null,
       rebellion: s.rebellion,
       rebellionLevel: s.rebellionLevel ?? 0,
@@ -414,7 +414,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         const g = room.game;
         const seatIdx = room.seats.findIndex((s) => s && s.username === username);
         if (seatIdx < 0) { err(ws, 'NOT_IN_ROOM', '你不在房间中'); return; }
-        const ids = Array.isArray(d.cardIds) && d.cardIds.length ? d.cardIds : null;
+        const ids = Array.isArray(d.cardIds) ? d.cardIds : null; // 张数合法性交给引擎校验，不静默当跳过
         const st = g.state();
         if (st.phase === 'reveal') {
           // 同时亮牌：任何座位可提交一次（亮或跳过），全部提交后推进

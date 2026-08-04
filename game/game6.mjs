@@ -180,7 +180,7 @@ export class Game6 {
     if (this.revealDone[seat]) throw new Error('REVEAL_ALREADY_DONE');
     const team = this.players[seat].team;
     if (cardIds !== null && cardIds !== undefined) {
-      if (cardIds.length !== 3) throw new Error('REVEAL_NEED_3');
+      if (!Array.isArray(cardIds) || cardIds.length !== 3) throw new Error('REVEAL_NEED_3');
       const handSet = new Set(this.handIds(seat));
       for (const id of cardIds) if (!handSet.has(id)) throw new Error('CARD_NOT_IN_HAND');
       const cards = cardIds.map((id) => this.cardById(id));
@@ -224,7 +224,7 @@ export class Game6 {
     if (this.phase !== 'bury') throw new Error('BAD_PHASE');
     const seat = this.dealerIndex;
     if (this.effectiveReveal) throw new Error('REVEAL_AFTER_OTHERS');
-    if (cardIds.length !== 3) throw new Error('REVEAL_NEED_3');
+    if (!Array.isArray(cardIds) || cardIds.length !== 3) throw new Error('REVEAL_NEED_3');
     const handSet = new Set(this.handIds(seat));
     for (const id of cardIds) if (!handSet.has(id)) throw new Error('CARD_NOT_IN_HAND');
     const cards = cardIds.map(id => this.cardById(id));
@@ -311,7 +311,7 @@ export class Game6 {
   bury(cardIds) {
     if (this.phase !== 'bury') throw new Error('BAD_PHASE');
     if (this.currentSeat !== this.dealerIndex) throw new Error('NOT_YOUR_TURN');
-    if (cardIds.length !== BOTTOM || new Set(cardIds).size !== BOTTOM) throw new Error('BURY_NEED_6');
+    if (!Array.isArray(cardIds) || cardIds.length !== BOTTOM || new Set(cardIds).size !== BOTTOM) throw new Error('BURY_NEED_6');
     const cards = cardIds.map((id) => this.cardById(id));
     if (cards.some((c) => c.points > 0)) throw new Error('BURY_NO_POINTS');
     this.bottom = cards;
@@ -517,6 +517,7 @@ export class Game6 {
 
   play(cardIds) {
     if (this.phase !== 'trick' || !this.trick) throw new Error('BAD_PHASE');
+    if (!Array.isArray(cardIds) || cardIds.length === 0) throw new Error('BAD_PLAY');
     if (this.trick.plays.length === N) {
       this.trick = { leaderSeat:this.currentSeat, dimension:null, plays:[], winnerSeat:null, pointsWon:0 };
     }
