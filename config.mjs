@@ -16,4 +16,6 @@ export const ACCOUNTS = [
   { username: 'caoyi', password: '123456', nickname: 'caoyi' },
   { username: 'guoxiang', password: '123456', nickname: 'guoxiang' },
   { username: 'niebo', password: '123456', nickname: 'niebo' },
+  { username: 'zhangdada', password: '123456', nickname: 'zhangdada' },
+  { username: 'shanliangjiejie', password: '123456', nickname: 'shanliangjiejie' },
 ];
