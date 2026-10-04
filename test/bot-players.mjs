@@ -70,7 +70,13 @@ async function bot(name) {
       return;
     }
     if (st.phase === 'bury' && st.currentSeat === seatIdx && st.me === seatIdx) {
-      const ids = (st.myHand || []).filter((c) => c.points === 0).slice(0, 6).map((c) => c.id);
+      const hand = st.myHand || [];
+      let ids = hand.filter((c) => c.points === 0).slice(0, 6).map((c) => c.id);
+      if (ids.length < 6) {
+        // 无分牌不足 6 张：按分值/牌力从小到大补足（点数为隐藏兜底）
+        const rest = hand.filter((c) => c.points > 0).sort((a, b) => (a.points - b.points) || (a.power - b.power));
+        ids = ids.concat(rest.slice(0, 6 - ids.length).map((c) => c.id));
+      }
       if (ids.length === 6) ws.send(JSON.stringify({ type: 'bury', data: { cardIds: ids } }));
       return;
     }

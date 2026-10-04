@@ -12,10 +12,11 @@ let gameSeq = 0;    // 快照序号过滤（丢弃过期快照）
 let mode = 'p4';      // 当前模式 p4|p6
 let swapSel = null;   // 6 人房换位选中座位
 let dealAnimRound = 0; // 发牌动画标记（每副首帧触发）
-let winHoldUntil = 0;   // 赢墩展示停顿截止时间
+let winHoldUntil = 0;   // 上一墩结果展示截止时间（仅影响展示，不阻塞状态刷新）
 let winHoldSeq = 0;     // 已展示的赢墩 seq
-let pendingState = null; // 停顿期间暂存的最新状态
-let winShown = false;    // 本墩赢牌是否已展示（避免重绘重复显示旧牌）
+let wonTrick = null;    // 上一墩快照（仅用于展示）
+let wonTrickSeq = 0;    // 上一墩对应的快照 seq
+let winHoldTimer = null;
 
 const SUIT_SYM = { spade: '♠', heart: '♥', club: '♣', diamond: '♦', joker: '★' };
 const SEAT_EMOJI = ['🦊', '🐯', '🐼', '🦁', '🐸', '🐨'];
@@ -27,16 +28,11 @@ function send(obj) {
   if (obj.type !== 'auth') clearWinHold(); // 用户主动操作：立即结束赢墩停顿，防止看到旧牌
   ws.send(JSON.stringify(obj));
 }
-// 解除赢墩停顿并应用最新状态
+// 解除“上一墩结果”展示（用户开始操作时立即结束）
 function clearWinHold() {
-  if (winHoldUntil > 0 || pendingState) {
-    winHoldUntil = 0;
-    if (pendingState) {
-      const p = pendingState;
-      pendingState = null;
-      handle({ type: 'game_state', data: p });
-    }
-  }
+  wonTrick = null;
+  winHoldUntil = 0;
+  if (winHoldTimer) { clearTimeout(winHoldTimer); winHoldTimer = null; }
 }
 let noticeTimer = null;
 function notice(msg) {
@@ -148,10 +144,10 @@ function cardSvg(c) {
     : '<text x="50" y="94" font-size="56" fill="' + color + '" text-anchor="middle">' + suit + '</text>';
   return '<svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">'
     + '<rect x="2" y="2" width="96" height="146" rx="10" fill="#ffffff" stroke="#d8d8d8" stroke-width="1.5"/>'
-    + '<text x="13" y="27" font-size="23" font-weight="800" fill="' + color + '">' + rank + '</text>'
-    + '<text x="17" y="43" font-size="15" fill="' + color + '">' + suit + '</text>'
-    + '<text x="87" y="134" font-size="23" font-weight="800" fill="' + color + '" text-anchor="end" transform="rotate(180 87 129)">' + rank + '</text>'
-    + '<text x="83" y="118" font-size="15" fill="' + color + '" text-anchor="end" transform="rotate(180 83 113)">' + suit + '</text>'
+    + '<text x="10" y="34" font-size="31" font-weight="900" fill="' + color + '">' + rank + '</text>'
+    + '<text x="12" y="53" font-size="19" fill="' + color + '">' + suit + '</text>'
+    + '<text x="90" y="138" font-size="31" font-weight="900" fill="' + color + '" text-anchor="end" transform="rotate(180 90 132)">' + rank + '</text>'
+    + '<text x="88" y="119" font-size="19" fill="' + color + '" text-anchor="end" transform="rotate(180 88 113)">' + suit + '</text>'
     + center
     + '</svg>';
 }
@@ -166,51 +162,61 @@ function makeCard(c, extra) {
 }
 
 function renderSeat(el, idx) {
+  const s = game.seats && game.seats[idx];
+  const me = game.me;
+  const isMate = !!s && idx !== me && idx % 2 === me % 2;
   el.innerHTML = '';
   el.classList.toggle('won', !!(game.trick && game.trick.winnerSeat === idx));
-  const s = game.seats && game.seats[idx];
+  el.classList.toggle('mate', isMate);
   const actorSeat = game.phase === 'reveal' ? game.revealActor : game.currentSeat;
   const n = s ? (game.handCounts[idx] ?? 0) : 0;
+  const revealedById = new Map((game.revealed || []).map((r) => [r.id, r]));
+  const seatRevealed = ((game.revealCards && game.revealCards[idx]) || [])
+    .map((id) => revealedById.get(id)).filter(Boolean);
   const name = document.createElement('div');
   name.className = 'seatName' + (idx === actorSeat ? ' current' : '');
   name.textContent = s ? (SEAT_EMOJI[idx % SEAT_EMOJI.length] + ' ' + s.nickname) : '空位';
   el.appendChild(name);
-  const info = document.createElement('div');
-  info.className = 'seatInfo';
-  const parts = [n + ' 张'];
-  if (game.dealerIndex === idx) parts.push('庄家');
-  if (s && idx % 2 === game.me % 2) parts.push('队友');
-  if (s && !s.connected) parts.push('离线');
-  if (game.phase === 'reveal' && game.revealDone && game.revealDone[idx] && !(game.revealCards && game.revealCards[idx])) parts.push('已过');
-  info.textContent = parts.join(' · ');
-  el.appendChild(info);
-  const backs = document.createElement('div');
-  backs.className = 'backs';
-  // 亮出的牌直接显示真牌（不再用牌背/文字）
-  const revealedById = new Map((game.revealed || []).map((r) => [r.id, r]));
-  const seatRevealed = ((game.revealCards && game.revealCards[idx]) || [])
-    .map((id) => revealedById.get(id)).filter(Boolean);
-  seatRevealed.forEach((c) => backs.appendChild(makeCard(c, 'mini')));
-  const hidden = n - seatRevealed.length;
-  const show = Math.min(hidden, 6);
-  for (let i = 0; i < show; i++) {
-    const b = document.createElement('div');
-    b.className = 'card back';
-    backs.appendChild(b);
+  const badges = document.createElement('div');
+  badges.className = 'seatBadges';
+  if (isMate) { const b = document.createElement('span'); b.className = 'badge mate'; b.textContent = '队友'; badges.appendChild(b); }
+  if (game.dealerIndex === idx) { const b = document.createElement('span'); b.className = 'badge dealer'; b.textContent = '庄家'; badges.appendChild(b); }
+  if (s && !s.connected) { const b = document.createElement('span'); b.className = 'badge off'; b.textContent = '离线'; badges.appendChild(b); }
+  if (game.phase === 'reveal' && game.revealDone && game.revealDone[idx] && seatRevealed.length === 0) {
+    const b = document.createElement('span'); b.className = 'badge pass'; b.textContent = '已过'; badges.appendChild(b);
   }
-  if (hidden > show) {
-    const more = document.createElement('span');
-    more.className = 'more';
-    more.textContent = '+' + (hidden - show);
-    backs.appendChild(more);
+  if (badges.children.length) el.appendChild(badges);
+  if (s) {
+    const cnt = document.createElement('div');
+    cnt.className = 'seatCount';
+    cnt.textContent = String(n);
+    const u = document.createElement('span');
+    u.textContent = ' 张';
+    cnt.appendChild(u);
+    el.appendChild(cnt);
   }
-  el.appendChild(backs);
+  if (seatRevealed.length) {
+    const backs = document.createElement('div');
+    backs.className = 'backs';
+    seatRevealed.forEach((c) => backs.appendChild(makeCard(c, 'mini')));
+    el.appendChild(backs);
+  }
   if (idx === actorSeat) {
     const badge = document.createElement('div');
     badge.className = 'turnBadge';
     badge.textContent = game.phase === 'reveal' ? '亮牌中' : (game.phase === 'bury' ? '埋底中' : (game.phase === 'tribute' ? '退贡中' : '出牌中'));
     el.appendChild(badge);
   }
+}
+
+// 出牌相对我的方位（4 人：下/左/上/右；6 人：下/右/右上/上/左上/左）
+function dirOf(seat, count) {
+  const me = game.me;
+  const n = count === 6 ? 6 : 4;
+  const rel = ((seat - me) % n + n) % n;
+  return n === 6
+    ? ['bottom', 'right', 'topright', 'top', 'topleft', 'left'][rel]
+    : ['bottom', 'left', 'top', 'right'][rel];
 }
 
 function winnerDir(g, winSeat) {
@@ -270,40 +276,47 @@ function renderGame() {
   }
   if (game.phase === 'reveal') infoParts.push('亮牌阶段：三张3=三反 / 三张5=五反，闲家亮出可造反');
   if (game.rebellionLevel > 0) infoParts.push('造反 ' + game.rebellionLevel + ' 人，本副免进贡');
+  // 上一墩结果：只做展示，不阻塞状态刷新
+  if (wonTrick && Date.now() < winHoldUntil && wonTrickSeq !== gameSeq) {
+    const bar = document.createElement('div');
+    bar.className = 'lastTrick';
+    const who = seats[wonTrick.winnerSeat] ? seats[wonTrick.winnerSeat].nickname : '?';
+    const lab = document.createElement('div');
+    lab.className = 'lastLabel';
+    lab.textContent = '上一轮 ' + who + ' 赢' + (wonTrick.pointsWon ? ' ' + wonTrick.pointsWon + ' 分' : '');
+    const row = document.createElement('div');
+    row.className = 'minirow';
+    (wonTrick.plays || []).forEach((pl) => (pl.cards || []).forEach((c) => row.appendChild(makeCard(c, 'mini'))));
+    bar.appendChild(lab);
+    bar.appendChild(row);
+    trickCards.appendChild(bar);
+  }
   if (game.phase === 'trick' && game.trick) {
-    const dim = game.trick.dimension ? (DIM_LABEL[game.trick.dimension] || game.trick.dimension) : '';
-    if (game.trick.leaderSeat != null && seats[game.trick.leaderSeat]) infoParts.push(seats[game.trick.leaderSeat].nickname + ' 领出' + (dim ? '（' + dim + '）' : ''));
-    const winFrame = !!(game.trick.winnerSeat != null);
-    if (!winFrame) winShown = false;
-    if (winFrame) {
-      const who = seats[game.trick.winnerSeat] ? seats[game.trick.winnerSeat].nickname : '?';
-      trickResult.textContent = who + ' 赢墩' + (game.trick.pointsWon ? '，得 ' + game.trick.pointsWon + ' 分' : '');
+    const tr = game.trick;
+    const dim = tr.dimension ? (DIM_LABEL[tr.dimension] || tr.dimension) : '';
+    if (tr.leaderSeat != null && seats[tr.leaderSeat]) infoParts.push(seats[tr.leaderSeat].nickname + ' 领出' + (dim ? '（' + dim + '）' : ''));
+    (tr.plays || []).forEach((pl) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'play fresh';
+      wrap.dataset.dir = dirOf(pl.seat, seats.length);
+      if (pl.seat % 2 === me % 2) wrap.classList.add('mate');
+      if (tr.winnerSeat === pl.seat) wrap.classList.add('win');
+      const who = seats[pl.seat] ? seats[pl.seat].nickname : ('玩家' + (pl.seat + 1));
+      const label = document.createElement('div');
+      label.className = 'playSeat';
+      label.textContent = (pl.seat === me ? '我 ' : (pl.seat % 2 === me % 2 ? '队友 ' : '')) + who + (tr.winnerSeat === pl.seat ? ' 👑' : '');
+      const cards = document.createElement('div');
+      cards.className = 'playCards';
+      (pl.cards || []).forEach((c) => cards.appendChild(makeCard(c)));
+      wrap.appendChild(label);
+      wrap.appendChild(cards);
+      trickCards.appendChild(wrap);
+    });
+    if (tr.winnerSeat != null) {
+      const who = seats[tr.winnerSeat] ? seats[tr.winnerSeat].nickname : '?';
+      trickResult.textContent = who + ' 赢墩' + (tr.pointsWon ? '，得 ' + tr.pointsWon + ' 分' : '');
       trickResult.classList.add('flash');
     }
-    // 赢墩牌面只展示一次；之后重绘（如点击选牌）不再重复显示上一轮牌
-    if (!(winFrame && winShown)) {
-      (game.trick.plays || []).forEach((pl, pi) => {
-        const wrap = document.createElement('div');
-        wrap.className = 'play' + (pi === (game.trick.plays || []).length - 1 ? ' fresh' : '');
-        const who = seats[pl.seat] ? seats[pl.seat].nickname : ('玩家' + (pl.seat + 1));
-        const label = document.createElement('div');
-        label.className = 'playSeat';
-        label.textContent = who;
-        const cards = document.createElement('div');
-        cards.className = 'playCards';
-        (pl.cards || []).forEach((c) => cards.appendChild(makeCard(c)));
-        wrap.appendChild(label);
-        wrap.appendChild(cards);
-        trickCards.appendChild(wrap);
-      });
-      if (game.trick.winnerSeat != null) {
-        const [wx, wy] = winnerDir(game, game.trick.winnerSeat);
-        trickCards.classList.add('winning');
-        trickCards.style.setProperty('--win-x', wx + 'px');
-        trickCards.style.setProperty('--win-y', wy + 'px');
-      }
-    }
-    if (winFrame) winShown = true;
   }
   if (game.bottom && game.bottom.length) {
     const lab = document.createElement('div');
@@ -351,6 +364,11 @@ function renderGame() {
     if (kongIds.has(c.id)) d.classList.add('suggested');
     if (interactive) {
       if (myTurnTake && !takeSet.has(c.id)) d.classList.add('dim');
+      else if (myTurnTake) {
+        d.classList.add('pick');
+        d.classList.add('clickable');
+        d.addEventListener('click', () => toggleHandSel(c.id, 1));
+      }
       else if (myTurnPlay && game.playHints && game.playHints.count === 1 && allowedSet.has(c.id)) {
         d.classList.add('clickable');
         d.classList.add('hot');
@@ -367,6 +385,7 @@ function renderGame() {
   const btns = $('buttons');
   btns.innerHTML = '';
   $('hint').textContent = game.message || '';
+  if (myTurnTake) $('hint').textContent = '请点选一张高亮的主牌，再点【退贡】';
   if (game.phase === 'reveal' && !(game.revealDone && game.revealDone[me])) {
     (game.revealOptions || []).forEach((o) => {
       const b = document.createElement('button');
@@ -450,8 +469,9 @@ function renderGame() {
     btns.appendChild(b);
     if (game.result) {
       const r = game.result;
-      const dTeam = game.dealerIndex % 2;
-      trickResult.textContent = '庄家方 ' + r.scores[dTeam] + ' : ' + r.scores[1 - dTeam] + ' 闲家方' + (r.dealerStay ? ' · 守庄' : ' · 换庄') + (r.tribute !== 'none' ? ' · 进贡:' + r.tribute : '');
+      const myTeam = me % 2;
+      const planTxt = r.tribute === 'double' ? '下一副：双进贡' : (r.tribute === 'single' ? '下一副：单进贡' : '下一副：无进贡（闲家需≥60分）');
+      trickResult.textContent = '本副 我队 ' + r.scores[myTeam] + ' : ' + r.scores[1 - myTeam] + ' 对方' + (r.dealerStay ? ' · 守庄' : ' · 换庄') + ' · ' + planTxt;
     }
   }
 }
@@ -516,33 +536,37 @@ function handle(msg) {
   } else if (msg.type === 'presence') {
     renderOnline(d.online);
   } else if (msg.type === 'room_updated') {
+    const prevRoomId = room && room.roomId;
     room = d;
+    if (d.roomId && d.roomId !== prevRoomId) { gameSeq = 0; clearWinHold(); } // 换房间：快照序号重新计数
     const stillIn = d.seats.some((s) => s && s.userId === myName);
     if (!stillIn) { game = null; showHall(); }
     else if (game && d.phase === 'playing') renderGame();
     else renderRoom();
   } else if (msg.type === 'game_state') {
     if (d.seq != null && gameSeq > 0 && d.seq <= gameSeq) return; // 丢弃过期快照
-    if (Date.now() < winHoldUntil) { pendingState = d; return; } // 赢墩停顿期间暂存
     gameSeq = d.seq != null ? d.seq : gameSeq;
-    game = d;
-    renderGame();
-    // 本墩刚决出胜负：停顿 2 秒展示赢家 + 飞牌动画
+    game = d; // 客户端永远以最新服务端状态渲染，任何停顿都只影响展示
     if (d.trick && d.trick.winnerSeat != null && d.seq !== winHoldSeq) {
       winHoldSeq = d.seq;
+      wonTrickSeq = d.seq;
+      wonTrick = JSON.parse(JSON.stringify(d.trick));
       winHoldUntil = Date.now() + 5000;
-      setTimeout(() => {
-        winHoldUntil = 0;
-        if (pendingState) { const p = pendingState; pendingState = null; handle({ type: 'game_state', data: p }); }
-      }, 5200);
+      if (winHoldTimer) clearTimeout(winHoldTimer);
+      winHoldTimer = setTimeout(() => { wonTrick = null; winHoldUntil = 0; winHoldTimer = null; renderGame(); }, 5200);
     }
+    renderGame();
   } else if (msg.type === 'room_dissolved') {
     game = null;
+    gameSeq = 0;
+    clearWinHold();
     $('connMsg').textContent = '房间已解散，返回大厅';
     showHall();
   } else if (msg.type === 'left_room') {
     room = null;
     game = null;
+    gameSeq = 0;
+    clearWinHold();
     showHall();
   } else if (msg.type === 'kicked') {
     token = null;
@@ -572,7 +596,7 @@ function connect(credentials) {
     gameSeq = 0;
     send({ type: 'auth', data: credentials });
   };
-  ws.onmessage = (e) => { try { handle(JSON.parse(e.data)); } catch {} };
+  ws.onmessage = (e) => { try { handle(JSON.parse(e.data)); } catch (err) { console.error('handle error', err); } };
   ws.onclose = () => {
     if (token) {
       $('connMsg').textContent = '连接断开，正在重连…';

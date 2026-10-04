@@ -193,6 +193,9 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         kongPlays.push({ cardIds: p.cardIds.slice(), dimension: p.dimension, label });
       }
     }
+    const SUITSYM = { spade: '♠', heart: '♥', club: '♣', diamond: '♦' };
+    const cardTxt = (c) => c ? (c.suit === 'joker' ? (String(c.rank).includes('big') ? '大王' : '小王') : (SUITSYM[c.suit] || '') + c.rank) : '';
+    const nickOf = (seat) => { const se = room.seats[seat]; return se ? (NICK.get(se.username) || se.username) : '?'; };
     let message;
     if (s.phase === 'reveal') {
       const done = (s.revealDone || []).filter(Boolean).length;
@@ -202,10 +205,13 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         : '亮牌阶段：三张3=三反 / 三张5=五反，每人可同时亮或跳过';
     } else if (s.phase === 'tribute') {
       const st = s.tributeState;
+      const giveTxt = lastGive ? (nickOf(lastGive.from) + ' 进贡 ' + cardTxt(lastGive.card) + ' 给 ' + nickOf(lastGive.to)) : '庄家方进最大牌';
       if (st && st.step === 'take') {
-        const who = room.seats[s.currentSeat] ? (NICK.get(room.seats[s.currentSeat].username) || room.seats[s.currentSeat].username) : '?';
-        message = s.currentSeat === seatIdx ? '轮到你了：退一张主牌' : '等待 ' + who + ' 退贡';
-      } else message = '进贡：庄家方给出最大牌';
+        const who = nickOf(s.currentSeat);
+        message = s.currentSeat === seatIdx
+          ? (lastGive ? cardTxt(lastGive.card) + ' 已进贡给你，请点选一张主牌（高亮）退贡' : '轮到你了：退一张主牌')
+          : '等待 ' + who + ' 退贡（' + giveTxt + '）';
+      } else message = '进贡阶段：' + giveTxt;
     } else if (s.phase === 'bury') {
       message = s.currentSeat === seatIdx ? '庄家选 6 张无分牌扣底（底牌将公开）' : '等待庄家埋底';
     } else if (s.phase === 'trick') {
@@ -222,7 +228,8 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       const r = s.result;
       if (r) {
         const dTeam = s.dealerIndex % 2;
-        message = '庄家方 ' + r.scores[dTeam] + ' 分，闲家方 ' + r.scores[1 - dTeam] + ' 分 · ' + (r.dealerStay ? '庄家守庄（连庄）' : '闲家得分≥40，换庄') + (r.tribute !== 'none' ? ' · 下一副进贡：' + r.tribute : ' · 下一副无进贡');
+        const planTxt = r.tribute === 'double' ? ' · 下一副双进贡（两人各进一张）' : r.tribute === 'single' ? ' · 下一副单进贡（庄家进一张）' : ' · 下一副无进贡（闲家需 ≥60 分才有进贡）';
+        message = '本副结束 · 庄家方 ' + r.scores[dTeam] + ' 分，闲家方 ' + r.scores[1 - dTeam] + ' 分（闲家得分 ' + r.x + '）· ' + (r.dealerStay ? '庄家守庄（连庄）' : '换庄') + planTxt;
       } else message = '本副结算';
     } else {
       message = '阶段：' + s.phase;
