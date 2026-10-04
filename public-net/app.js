@@ -88,14 +88,25 @@ function showRoom() {
   $('roomView').classList.remove('hidden');
 }
 
-// 竖屏且在对局中：提示横屏游玩
+// 竖屏对局中：给出可关闭的小提示（不阻塞操作；微信内置浏览器无法自动旋转）
+let rotateTipDismissed = false;
 function updateRotatePrompt() {
   const inGame = !document.getElementById('gameView').classList.contains('hidden');
   const portrait = window.innerHeight > window.innerWidth;
-  document.getElementById('rotatePrompt').classList.toggle('hidden', !(portrait && inGame));
+  const show = portrait && inGame && !rotateTipDismissed;
+  document.getElementById('rotatePrompt').classList.toggle('hidden', !show);
 }
 window.addEventListener('resize', updateRotatePrompt);
 window.addEventListener('orientationchange', () => setTimeout(updateRotatePrompt, 200));
+// 尝试锁定横屏；不支持的浏览器忽略失败，竖屏仍可正常游玩
+function tryLockLandscape() {
+  try {
+    if (screen.orientation && typeof screen.orientation.lock === 'function') {
+      const p = screen.orientation.lock('landscape');
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    }
+  } catch (e) {}
+}
 
 function renderOnline(online) {
   const ul = $('onlineList');
@@ -218,6 +229,7 @@ function renderGame() {
   $('roomView').classList.add('hidden');
   $('gameView').classList.remove('hidden');
   updateRotatePrompt();
+  tryLockLandscape();
   $('gRound').textContent = game.roundNo ?? 1;
   $('gPhase').textContent = PHASE_LABEL[game.phase] || game.phase;
   const seats = game.seats || [];
@@ -604,6 +616,11 @@ $('leaveRoomBtn').addEventListener('click', () => send({ type: 'leave_room' }));
 $('startGameBtn').addEventListener('click', () => send({ type: 'start_game' }));
 $('gResetBtn').addEventListener('click', () => location.reload());
 $('gLeaveBtn').addEventListener('click', () => send({ type: 'leave_room' }));
+$('rotatePromptClose').addEventListener('click', () => { rotateTipDismissed = true; updateRotatePrompt(); });
+// 竖屏提示条移到牌桌上方，避免悬浮遮挡按钮
+const rotateEl = document.getElementById('rotatePrompt');
+const tableEl = document.getElementById('table');
+if (rotateEl && tableEl && tableEl.parentNode) tableEl.parentNode.insertBefore(rotateEl, tableEl);
 $('swapBtn').addEventListener('click', () => send({ type: 'swap_seats', data: { a: 2, b: 3 } }));
 $('copyRoomBtn').addEventListener('click', () => {
   if (navigator.clipboard && room) navigator.clipboard.writeText(room.roomId).then(() => $('connMsg').textContent = '房号已复制');

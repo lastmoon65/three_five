@@ -259,13 +259,42 @@ button.suggest {
   #gameView.mode6 .playCards .card { width: 26px; height: 38px; }
   #gameView.mode6 #table .seat .card.mini { width: 15px; height: 22px; }
 }
-/* ---- 竖屏对局提示横屏 ---- */
+/* ---- 竖屏对局提示（牌桌内常规元素，不遮挡操作） ---- */
 #rotatePrompt {
-  position: fixed; inset: 0; z-index: 100;
-  background: rgba(10, 30, 18, 0.97);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-  text-align: center;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin: 0 0 8px; padding: 6px 10px;
+  background: rgba(255,215,106,0.14);
+  border: 1px solid rgba(255,215,106,0.45);
+  border-radius: 12px;
 }
-#rotatePrompt .rotIcon { font-size: 60px; color: #ffd76a; animation: rotSpin 1.6s ease-in-out infinite; }
-@keyframes rotSpin { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(90deg); } }
-#rotatePrompt p { font-size: 18px; color: #ffe3a3; }
+#rotatePrompt span { font-size: 12px; color: #ffe3a3; }
+#rotatePrompt button {
+  width: auto; margin: 0; padding: 4px 12px; font-size: 12px;
+  border-radius: 16px; background: rgba(255,255,255,0.14);
+  border: 1px solid #cfe6d8; color: #eafff2; font-weight: 400; box-shadow: none;
+}
+
+/* ---- 竖屏适配（微信内置浏览器等无法旋转时也能正常游玩） ---- */
+@media (orientation: portrait) {
+  #app { max-width: none; width: 100%; padding: 8px 10px 10px; }
+  #table { border-width: 10px; padding: 6px; gap: 6px; min-height: 260px; }
+  .card { width: 46px; height: 70px; }
+  #handCards { min-height: 74px; gap: 5px; }
+  #handArea { margin-top: 6px; padding: 6px 8px 10px; }
+  #trickCards { min-height: 66px; }
+  .playCards .card { width: 36px; height: 54px; }
+  .bottomCards .card { width: 30px; height: 42px; }
+  #gameView.mode6 #handCards .card { width: 36px; height: 54px; }
+  #gameView.mode6 .playCards .card { width: 30px; height: 44px; }
+  #gameView.mode6 .bottomCards .card { width: 26px; height: 38px; }
+}
+
+/* ---- 小屏竖屏（如 320x568）进一步压缩，避免需要滚动 ---- */
+@media (orientation: portrait) and (max-height: 700px) {
+  #table { min-height: 200px; }
+  .card { width: 40px; height: 62px; }
+  #handCards { min-height: 62px; }
+  #handArea { padding: 5px 6px 8px; }
+  #trickCards { min-height: 56px; }
+  .playCards .card { width: 30px; height: 46px; }
+}
