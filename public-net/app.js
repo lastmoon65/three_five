@@ -42,8 +42,8 @@ function notice(msg) {
 }
 function cardLabel(c) {
   if (!c) return '?';
-  if (c.suit === 'joker') return '王';
-  return (c.rank || '') + (SUIT_SYM[c.suit] || '');
+  if (c.suit === 'joker') return String(c.rank).includes('big') ? '大王' : '小王';
+  return (SUIT_SYM[c.suit] || '') + (c.rank || '');
 }
 
 function showMode() {
@@ -139,15 +139,14 @@ function cardSvg(c) {
   const rank = c.suit === 'joker' ? (String(c.rank).includes('big') ? '大' : '小') : String(c.rank);
   const suit = c.suit === 'joker' ? '★' : (SUIT_SYM[c.suit] || '');
   const color = (c.suit === 'heart' || c.suit === 'diamond' || c.suit === 'joker') ? '#c62828' : '#1a1a1a';
+  const wide = String(rank).length > 1; // 「10」占两位，字号略缩
   const center = c.suit === 'joker'
-    ? '<text x="50" y="94" font-size="48" fill="#6a1b9a" text-anchor="middle">★</text>'
-    : '<text x="50" y="94" font-size="56" fill="' + color + '" text-anchor="middle">' + suit + '</text>';
+    ? '<text x="50" y="106" font-size="62" fill="#6a1b9a" text-anchor="middle">★</text>'
+    : '<text x="50" y="110" font-size="74" fill="' + color + '" text-anchor="middle">' + suit + '</text>';
   return '<svg viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">'
     + '<rect x="2" y="2" width="96" height="146" rx="10" fill="#ffffff" stroke="#d8d8d8" stroke-width="1.5"/>'
-    + '<text x="10" y="34" font-size="31" font-weight="900" fill="' + color + '">' + rank + '</text>'
-    + '<text x="12" y="53" font-size="19" fill="' + color + '">' + suit + '</text>'
-    + '<text x="90" y="138" font-size="31" font-weight="900" fill="' + color + '" text-anchor="end" transform="rotate(180 90 132)">' + rank + '</text>'
-    + '<text x="88" y="119" font-size="19" fill="' + color + '" text-anchor="end" transform="rotate(180 88 113)">' + suit + '</text>'
+    + '<text x="8" y="46" font-size="' + (wide ? 38 : 46) + '" font-weight="900" fill="' + color + '">' + rank + '</text>'
+    + '<text x="10" y="76" font-size="27" fill="' + color + '">' + suit + '</text>'
     + center
     + '</svg>';
 }
@@ -161,6 +160,11 @@ function makeCard(c, extra) {
   return d;
 }
 
+// 该座位是否亮过番（三反/五反）
+function seatRevealCount(idx) {
+  return ((game.revealCards && game.revealCards[idx]) || []).length;
+}
+
 function renderSeat(el, idx) {
   const s = game.seats && game.seats[idx];
   const me = game.me;
@@ -168,6 +172,7 @@ function renderSeat(el, idx) {
   el.innerHTML = '';
   el.classList.toggle('won', !!(game.trick && game.trick.winnerSeat === idx));
   el.classList.toggle('mate', isMate);
+  el.classList.toggle('hasReveal', seatRevealCount(idx) > 0);
   const actorSeat = game.phase === 'reveal' ? game.revealActor : game.currentSeat;
   const n = s ? (game.handCounts[idx] ?? 0) : 0;
   const revealedById = new Map((game.revealed || []).map((r) => [r.id, r]));
@@ -184,6 +189,12 @@ function renderSeat(el, idx) {
   if (s && !s.connected) { const b = document.createElement('span'); b.className = 'badge off'; b.textContent = '离线'; badges.appendChild(b); }
   if (game.phase === 'reveal' && game.revealDone && game.revealDone[idx] && seatRevealed.length === 0) {
     const b = document.createElement('span'); b.className = 'badge pass'; b.textContent = '已过'; badges.appendChild(b);
+  }
+  if (seatRevealed.length) {
+    const b = document.createElement('span');
+    b.className = 'badge reveal';
+    b.textContent = seatRevealed.every((c) => String(c.rank) === '5') ? '亮五反' : '亮三反';
+    badges.appendChild(b);
   }
   if (badges.children.length) el.appendChild(badges);
   if (s) {
@@ -275,7 +286,13 @@ function renderGame() {
     infoParts.push(who + ' 进贡 ' + cardLabel(game.lastGive.card));
   }
   if (game.phase === 'reveal') infoParts.push('亮牌阶段：三张3=三反 / 三张5=五反，闲家亮出可造反');
-  if (game.rebellionLevel > 0) infoParts.push('造反 ' + game.rebellionLevel + ' 人，本副免进贡');
+  if (game.effectiveReveal) {
+    const rv = game.effectiveReveal;
+    const rvWho = seats[rv.seat] ? seats[rv.seat].nickname : '?';
+    const rvMap = new Map((game.revealed || []).map((r) => [r.id, r]));
+    const rvTxt = (rv.cardIds || []).map((id) => { const c = rvMap.get(id); return c ? cardLabel(c) : ''; }).filter(Boolean).join(' ');
+    infoParts.push('亮番：' + rvWho + ' 亮' + (rv.level === 'wu' ? '五反' : '三反') + (rvTxt ? '（' + rvTxt + '）' : '') + (game.rebellion ? ' · 造反成立，本副免进贡' : ''));
+  }
   // 上一墩结果：只做展示，不阻塞状态刷新
   if (wonTrick && Date.now() < winHoldUntil && wonTrickSeq !== gameSeq) {
     const bar = document.createElement('div');
@@ -295,20 +312,31 @@ function renderGame() {
     const tr = game.trick;
     const dim = tr.dimension ? (DIM_LABEL[tr.dimension] || tr.dimension) : '';
     if (tr.leaderSeat != null && seats[tr.leaderSeat]) infoParts.push(seats[tr.leaderSeat].nickname + ' 领出' + (dim ? '（' + dim + '）' : ''));
-    (tr.plays || []).forEach((pl) => {
+    const dimName = DIM_LABEL[tr.dimension] || (tr.dimension || '');
+    (tr.plays || []).forEach((pl, pi) => {
+      const cnt = (pl.cards || []).length;
+      const isLead = pi === 0;
       const wrap = document.createElement('div');
       wrap.className = 'play fresh';
       wrap.dataset.dir = dirOf(pl.seat, seats.length);
       if (pl.seat % 2 === me % 2) wrap.classList.add('mate');
       if (tr.winnerSeat === pl.seat) wrap.classList.add('win');
+      if (pl.seat === me) wrap.classList.add('mine');
       const who = seats[pl.seat] ? seats[pl.seat].nickname : ('玩家' + (pl.seat + 1));
+      const head = document.createElement('div');
+      head.className = 'playHead';
       const label = document.createElement('div');
       label.className = 'playSeat';
-      label.textContent = (pl.seat === me ? '我 ' : (pl.seat % 2 === me % 2 ? '队友 ' : '')) + who + (tr.winnerSeat === pl.seat ? ' 👑' : '');
+      label.textContent = (pl.seat === me ? '我 ' : (pl.seat % 2 === me % 2 ? '队友 ' : '')) + SEAT_EMOJI[pl.seat % SEAT_EMOJI.length] + ' ' + who + (tr.winnerSeat === pl.seat ? ' 👑' : '');
+      const tag = document.createElement('span');
+      tag.className = 'playTag' + (isLead && dimName ? ' lead' : '');
+      tag.textContent = (isLead && dimName ? dimName + '·' : '') + cnt + ' 张';
+      head.appendChild(label);
+      head.appendChild(tag);
       const cards = document.createElement('div');
       cards.className = 'playCards';
       (pl.cards || []).forEach((c) => cards.appendChild(makeCard(c)));
-      wrap.appendChild(label);
+      wrap.appendChild(head);
       wrap.appendChild(cards);
       trickCards.appendChild(wrap);
     });

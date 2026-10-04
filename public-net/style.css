@@ -100,12 +100,15 @@ button.ghost { background: rgba(255,255,255,0.08); border: 1px solid #cfe6d8; co
 /* 队友醒目：绿色描边 + 徽章 */
 .seat.opponent.mate { border-color: #46d97f; background: rgba(18,80,48,0.5); box-shadow: inset 0 0 0 1px rgba(70,217,127,0.45); }
 .seat.opponent.mate .seatName { color: #9df5c0; }
+/* 亮过三反/五反的座位高亮 */
+.seat.opponent.hasReveal { border-color: #7ec8ff; box-shadow: inset 0 0 0 1px rgba(126,200,255,0.6); background: rgba(20,60,90,0.5); }
 .seatBadges { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
 .badge { font-size: 10px; font-weight: 700; border-radius: 10px; padding: 1px 7px; white-space: nowrap; }
 .badge.mate { background: #2ecc71; color: #05301a; }
 .badge.dealer { background: #ffd76a; color: #4a2d00; }
 .badge.off { background: #8a8a8a; color: #222; }
 .badge.pass { background: rgba(255,255,255,0.18); color: #eafff2; }
+.badge.reveal { background: #7ec8ff; color: #04314f; }
 .seatCount { font-size: 28px; font-weight: 900; color: #ffe3a3; line-height: 1.05; }
 .seatCount span { font-size: 12px; font-weight: 400; opacity: .85; color: #d7e8dd; }
 @keyframes winPulse {
@@ -156,7 +159,11 @@ button.ghost { background: rgba(255,255,255,0.08); border: 1px solid #cfe6d8; co
 .lastLabel { font-size: 10px; color: #ffd76a; white-space: nowrap; }
 .minirow { display: flex; gap: 2px; flex-wrap: wrap; justify-content: center; }
 #trickResult.flash { text-shadow: 0 0 10px rgba(255,215,106,0.9); }
-.playSeat { font-size: 10px; opacity: .85; }
+.playHead { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; }
+.playSeat { font-size: 12px; font-weight: 700; color: #f3fff8; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.playTag { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 9px; background: rgba(255,255,255,0.22); color: #eafff2; white-space: nowrap; }
+.playTag.lead { background: #ffd76a; color: #4a2d00; }
+.play.mine { border: 1px solid #7ec8ff; box-shadow: 0 0 8px rgba(126,200,255,0.45); }
 .playCards { display: flex; gap: 2px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
 .playCards .card { width: 40px; height: 60px; }
 /* 退贡时可选的主牌：高亮闪烁，提示玩家点选 */
