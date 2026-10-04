@@ -1,5 +1,5 @@
 // 固定账户配置（私服）：改这里即可，密码建议上线前修改
-// player1~player5 为测试账号，朋友账号：erxiao / chendao / wangzong / yuyu / jingge / tingjie / caoyi / guoxiang / niebo
+// player1~player5 为测试账号，朋友账号：erxiao / chendao / wangzong / yuyu / jingge / tingjie / caoyi / guoxiang / niebo / zhangdada / shanliangjiejie / xingfu / pingan
 export const ACCOUNTS = [
   { username: 'player1', password: '123456', nickname: '玩家一' },
   { username: 'player2', password: '123456', nickname: '玩家二' },
@@ -18,4 +18,6 @@ export const ACCOUNTS = [
   { username: 'niebo', password: '123456', nickname: 'niebo' },
   { username: 'zhangdada', password: '123456', nickname: 'zhangdada' },
   { username: 'shanliangjiejie', password: '123456', nickname: 'shanliangjiejie' },
+  { username: 'xingfu', password: '123456', nickname: 'xingfu' },
+  { username: 'pingan', password: '123456', nickname: 'pingan' },
 ];
