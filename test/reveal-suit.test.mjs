@@ -64,7 +64,7 @@ test('梅花甩牌响应：亮番的 ♣5 不计入梅花张数', () => {
 test('已亮番的牌不能组成花色甩，只能作为主牌甩', () => {
   const g = craft();
   revealWu(g, 0);
-  setHands(g, [['club_5', 'club_K', 'heart_9', 'spade_7'], ['club_A', 'club_K'], ['club_J', 'heart_3'], ['club_Q', 'heart_4']]);
+  setHands(g, [['club_5', 'club_K', 'heart_9', 'spade_7'], ['spade_8', 'diamond_3', 'club_4'], ['spade_9', 'diamond_7', 'club_3'], ['spade_10', 'diamond_8', 'club_6']]);
   g.phase = 'trick';
   g.trick = { leaderSeat: 0, dimension: null, plays: [], winnerSeat: null, pointsWon: 0 };
   g.currentSeat = 0;

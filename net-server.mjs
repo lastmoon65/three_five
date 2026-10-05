@@ -489,7 +489,17 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         const seatIdx = room.seats.findIndex((s) => s && s.username === username);
         if (st.currentSeat !== seatIdx) { err(ws, 'NOT_YOUR_TURN', '还没轮到你出牌'); return; }
         const ids = Array.isArray(d.cardIds) ? d.cardIds : [];
-        try { g.play(ids); } catch (e) { err(ws, 'BAD_PLAY', e.message); return; }
+        try { g.play(ids); } catch (e) {
+          const map = {
+            THROW_NOT_TOP: '甩牌失败：必须甩出该花色（或主牌）里最大的前几张',
+            THROW_NOT_BIGGEST: '甩牌失败：别家还有更大的牌',
+            BAD_LEAD: '出牌不合法',
+            ILLEGAL_RESPONSE: '跟牌不合法',
+            CARD_NOT_IN_HAND: '手牌里没有这张牌',
+          };
+          err(ws, 'BAD_PLAY', map[e.message] || e.message);
+          return;
+        }
         broadcastGameState(room);
         return;
       }

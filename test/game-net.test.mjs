@@ -200,17 +200,19 @@ function isMainCard(c) {
 }
 async function reachBury(users, roomId) {
   await skipAllReveals(users);
-  const st = await waitNewestGame(users[0].inbox, (d) => d.phase === 'tribute' && d.tributeState);
+  const st = await waitNewestGame(users[0].inbox, (d) => d.phase === 'tribute' || d.phase === 'bury' || d.phase === 'trick');
+  if (st.data.phase !== 'tribute') return; // 进贡已结束/本副无需进贡
   const pairs = st.data.tributeState.pairs;
   for (let i = 0; i < pairs.length; i++) {
     const pair = pairs[i];
     const takerUser = users.find((u) => u.seat === pair.taker);
-    const ts = await waitNewestGame(takerUser.inbox, (d) => d.phase === 'tribute' && d.tributeState && d.tributeState.step === 'take' && d.tributeState.pairIdx === i && d.seq >= st.data.seq);
+    const ts = await waitNewestGame(takerUser.inbox, (d) => (d.phase === 'tribute' && d.tributeState && d.tributeState.step === 'take' && d.tributeState.pairIdx === i && d.seq >= st.data.seq) || d.phase === 'bury' || d.phase === 'trick');
+    if (ts.data.phase !== 'tribute') break; // 已被推进（自动/并发处理）
     const card = ts.data.myHand.find(isMainCard) || ts.data.myHand[0];
     send(takerUser.ws, { type: 'tribute_take', data: { cardId: card.id } });
     await waitNewestGame(users[0].inbox, (d) => d.seq > ts.data.seq && (d.phase !== 'tribute' || d.tributeState.pairIdx > i), 8000);
   }
-  await waitNewestGame(users[0].inbox, (d) => d.phase === 'bury');
+  await waitNewestGame(users[0].inbox, (d) => d.phase === 'bury' || d.phase === 'trick');
 }
 
 test('单进贡：自动进贡 -> 退贡 -> 埋底公开（含校验）', async () => {

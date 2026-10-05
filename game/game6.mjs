@@ -92,6 +92,7 @@ export class Game6 {
     this.autoBury = null;
     this.buriedBy = null;
     this.phase = 'reveal';
+    this.revealCards = new Map(); // 每副重置，避免上一副亮牌记录残留
     this.revealDone = new Array(N).fill(false);
     this.revealOrder = null;
     this.revealIdx = 0;
@@ -393,6 +394,20 @@ export class Game6 {
     return false;
   }
 
+  // 甩牌附加条件：别家同花色（或主牌）中没有比甩出的最小牌更大的牌
+  unbeatableThrow(seat, cards, cat) {
+    let low = Infinity;
+    for (const c of cards) low = Math.min(low, this.powerOf(c));
+    for (let s = 0; s < this.hands.length; s++) {
+      if (s === seat) continue;
+      for (const c of this.hands[s]) {
+        const sameCat = cat === 'main' ? (isMain(c) || this.isRevealed(c)) : (this.suitOf(c) === cat);
+        if (sameCat && this.powerOf(c) > low) return false;
+      }
+    }
+    return true;
+  }
+
   isTopNofFollow(seat, cards, cat) {
     const sorted = this.handFollow(seat, cat).slice().sort((a, b) => (this.powerOf(b) - this.powerOf(a)) || a.id.localeCompare(b.id));
     const prefix = sorted.slice(0, cards.length).map((c) => c.id).sort();
@@ -420,12 +435,15 @@ export class Game6 {
     }
     const follow = this.suitOf(cards[0]);
     if (follow !== null && cards.every((c) => this.suitOf(c) === follow)) {
-      if (this.isTopNofFollow(this.currentSeat, cards, follow)) return { ok:true, dimension:'throw' };
-      return { ok:false, reason:'THROW_NOT_TOP' };
+      if (!this.isTopNofFollow(this.currentSeat, cards, follow)) return { ok:false, reason:'THROW_NOT_TOP' };
+      // 红桃是主牌花色：跟牌方要用主牌跟，故按"所有主牌"比较
+      if (!this.unbeatableThrow(this.currentSeat, cards, follow === 'heart' ? 'main' : follow)) return { ok:false, reason:'THROW_NOT_BIGGEST' };
+      return { ok:true, dimension:'throw' };
     }
     if (cards.every((c) => isMain(c) || this.isRevealed(c))) {
-      if (this.isTopNofMain(this.currentSeat, cards)) return { ok:true, dimension:'throw' };
-      return { ok:false, reason:'THROW_NOT_TOP' };
+      if (!this.isTopNofMain(this.currentSeat, cards)) return { ok:false, reason:'THROW_NOT_TOP' };
+      if (!this.unbeatableThrow(this.currentSeat, cards, 'main')) return { ok:false, reason:'THROW_NOT_BIGGEST' };
+      return { ok:true, dimension:'throw' };
     }
     return { ok:false, reason:'BAD_LEAD' };
   }
@@ -440,12 +458,18 @@ export class Game6 {
       for (const c of hand) out.push({ cardIds:[c.id], dimension:'single' });
       const cats = {};
       for (const c of hand) { const f = this.suitOf(c); if (f) (cats[f] ||= []).push(c); }
-      for (const list of Object.values(cats)) {
+      for (const [cat, list] of Object.entries(cats)) {
         list.sort((a, b) => (this.powerOf(b) - this.powerOf(a)) || a.id.localeCompare(b.id));
-        for (let n = 2; n <= list.length; n++) out.push({ cardIds:list.slice(0, n).map((c) => c.id), dimension:'throw' });
+        for (let n = 2; n <= list.length; n++) {
+          const picked = list.slice(0, n);
+          if (this.unbeatableThrow(seat, picked, cat === 'heart' ? 'main' : cat)) out.push({ cardIds:picked.map((c) => c.id), dimension:'throw' });
+        }
       }
       const mains = this.handMain(seat).slice().sort((a, b) => (this.powerOf(b) - this.powerOf(a)) || a.id.localeCompare(b.id));
-      for (let n = 2; n <= mains.length; n++) out.push({ cardIds:mains.slice(0, n).map((c) => c.id), dimension:'throw' });
+      for (let n = 2; n <= mains.length; n++) {
+        const picked = mains.slice(0, n);
+        if (this.unbeatableThrow(seat, picked, 'main')) out.push({ cardIds:picked.map((c) => c.id), dimension:'throw' });
+      }
       const q = hand.find((c) => c.suit === 'spade' && c.rank === 'Q');
       if (q && !this.tributed.has(q.id)) {
         const byRank = {};
