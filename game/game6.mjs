@@ -117,7 +117,9 @@ export class Game6 {
   handMain(seat) { return this.hands[seat].filter((c) => isMain(c) || this.isRevealed(c)); }
   handScoring(seat) { return this.hands[seat].filter((c) => c.points > 0); }
   handSub(seat) { return this.hands[seat].filter((c) => !(isMain(c) || this.isRevealed(c))); }
-  handFollow(seat, cat) { return this.hands[seat].filter((c) => followSuit(c) === cat); }
+  // 有效花色：常主与已亮番的三五反都按主牌走（不按原花色），其余按花色
+  suitOf(c) { return (isChangZhu(c) || this.isRevealed(c)) ? null : followSuit(c); }
+  handFollow(seat, cat) { return this.hands[seat].filter((c) => this.suitOf(c) === cat); }
   isKongable(cards) {
     return cards.length === 4 && sameRank(cards) && !cards.some((c) => this.tributed.has(c.id));
   }
@@ -328,19 +330,19 @@ export class Game6 {
   }
 
   singleResponseOk(card, lead) {
-    const cat = (isChangZhu(lead) || lead.suit === 'heart') ? 'main' : followSuit(lead); // 红桃主花色：领出红桃按主牌处理
+    const cat = (isMain(lead) || this.isRevealed(lead)) ? 'main' : followSuit(lead); // 红桃主花色/已亮番：按主牌处理
     if (cat === 'main') {
       if (this.handMain(this.currentSeat).length > 0) return isMain(card) || this.isRevealed(card);
       return true;
     }
-    if (this.handFollow(this.currentSeat, cat).length > 0) return followSuit(card) === cat;
+    if (this.handFollow(this.currentSeat, cat).length > 0) return this.suitOf(card) === cat;
     return true;
   }
 
   throwResponseOk(cards) {
     const leadCards = this.trick.plays[0].cardIds.map((id) => this.cardById(id));
-    const leadFollow = followSuit(leadCards[0]);
-    const isSuitThrow = leadFollow !== null && leadCards.every((c) => followSuit(c) === leadFollow);
+    const leadFollow = this.suitOf(leadCards[0]);
+    const isSuitThrow = leadFollow !== null && leadCards.every((c) => this.suitOf(c) === leadFollow);
     const isMainThrow = !isSuitThrow && leadCards.every((c) => isMain(c) || this.isRevealed(c));
     if (isMainThrow) {
       const need = Math.min(this.handMain(this.currentSeat).length, cards.length);
@@ -348,7 +350,7 @@ export class Game6 {
       return have === need;
     }
     const need = Math.min(this.handFollow(this.currentSeat, leadFollow).length, cards.length);
-    const have = cards.filter((c) => followSuit(c) === leadFollow).length;
+    const have = cards.filter((c) => this.suitOf(c) === leadFollow).length;
     return have === need;
   }
 
@@ -416,8 +418,8 @@ export class Game6 {
       }
       return { ok:false, reason:'BAD_LEAD' };
     }
-    const follow = followSuit(cards[0]);
-    if (follow !== null && cards.every((c) => followSuit(c) === follow)) {
+    const follow = this.suitOf(cards[0]);
+    if (follow !== null && cards.every((c) => this.suitOf(c) === follow)) {
       if (this.isTopNofFollow(this.currentSeat, cards, follow)) return { ok:true, dimension:'throw' };
       return { ok:false, reason:'THROW_NOT_TOP' };
     }
@@ -437,7 +439,7 @@ export class Game6 {
       const out = [];
       for (const c of hand) out.push({ cardIds:[c.id], dimension:'single' });
       const cats = {};
-      for (const c of hand) { const f = followSuit(c); if (f) (cats[f] ||= []).push(c); }
+      for (const c of hand) { const f = this.suitOf(c); if (f) (cats[f] ||= []).push(c); }
       for (const list of Object.values(cats)) {
         list.sort((a, b) => (this.powerOf(b) - this.powerOf(a)) || a.id.localeCompare(b.id));
         for (let n = 2; n <= list.length; n++) out.push({ cardIds:list.slice(0, n).map((c) => c.id), dimension:'throw' });
@@ -548,14 +550,14 @@ export class Game6 {
 
   resolveSingle(plays) {
     const lead = this.cardById(plays[0].cardIds[0]);
-    const cat = (isChangZhu(lead) || lead.suit === 'heart') ? 'main' : followSuit(lead); // 红桃主花色：领出红桃按主牌处理
+    const cat = (isMain(lead) || this.isRevealed(lead)) ? 'main' : followSuit(lead); // 红桃主花色/已亮番：按主牌处理
     let best = null;
     plays.forEach((p, i) => {
       if (p.cardIds.length === 0) return;
       const c = this.cardById(p.cardIds[0]);
       let key;
       if (isMain(c) || this.isRevealed(c)) key = 2;
-      else if (cat !== 'main' && followSuit(c) === cat) key = 1;
+      else if (cat !== 'main' && this.suitOf(c) === cat) key = 1;
       else key = 0;
       const pw = this.powerOf(c);
       if (!best || key > best.key || (key === best.key && pw > best.pw)) best = { i, key, pw };

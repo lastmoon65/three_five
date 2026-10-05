@@ -495,6 +495,13 @@ function renderGame() {
     b.textContent = '下一副';
     b.addEventListener('click', () => send({ type: 'next_round' }));
     btns.appendChild(b);
+    const quit = document.createElement('button');
+    quit.textContent = '结束对局并退出';
+    quit.className = 'ghost';
+    quit.addEventListener('click', () => {
+      if (window.confirm('确定结束本局并退出吗？房间会解散，所有人返回大厅。')) send({ type: 'leave_room' });
+    });
+    btns.appendChild(quit);
     if (game.result) {
       const r = game.result;
       const myTeam = me % 2;
@@ -588,7 +595,8 @@ function handle(msg) {
     game = null;
     gameSeq = 0;
     clearWinHold();
-    $('connMsg').textContent = '房间已解散，返回大厅';
+    const who = d && typeof d.reason === 'string' && d.reason.includes('|') ? d.reason.split('|')[1] : '';
+    $('connMsg').textContent = who ? (who + ' 结束了对局，房间解散，返回大厅') : '房间已解散，返回大厅';
     showHall();
   } else if (msg.type === 'left_room') {
     room = null;

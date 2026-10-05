@@ -137,7 +137,7 @@ test('房主离开：全员收到 room_dissolved', async () => {
   send(a.ws, { type: 'leave_room' });
   const ma = await waitMsg(a.inbox, 'room_dissolved');
   const mb = await waitMsg(b.inbox, 'room_dissolved');
-  assert.equal(ma.data.reason, 'HOST_LEFT');
+  assert.ok(ma.data.reason.startsWith('HOST_LEFT'), '房主退出解散，原因带操作者：' + ma.data.reason);
   assert.equal(mb.data.roomId, created.data.roomId);
 });
 

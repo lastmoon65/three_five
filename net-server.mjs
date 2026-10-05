@@ -139,7 +139,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
     if (idx < 0) { sendLeft(username, roomId); return; }
     // 游戏进行中任何人退出 → 本局作废、房间解散；等待阶段：房主退出解散，非房主清座
     if (room.phase === 'playing' || room.hostSeatId === idx) {
-      dissolveRoom(room, room.hostSeatId === idx ? 'HOST_LEFT' : 'GAME_LEFT');
+      dissolveRoom(room, (room.hostSeatId === idx ? 'HOST_LEFT' : 'GAME_LEFT') + '|' + (NICK.get(username) || username));
       return;
     }
     room.seats[idx] = null;
