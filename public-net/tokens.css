@@ -1,0 +1,163 @@
+/* Red Heart Duel UI v4 design tokens, shared by the green and midnight themes. */
+:root,
+html[data-theme="green"] {
+  --felt-900: #07130e;
+  --felt-800: #0a1f16;
+  --felt-700: #0e422d;
+  --felt-600: #125238;
+  --felt-500: #165e41;
+  --felt-center: #165e41;
+  --felt-mid: #0e422d;
+  --felt-edge: #072619;
+  --app-base: #030806;
+  --felt-glow: rgba(229, 193, 123, .08);
+  --rim: #2a1a0e;
+  --rim-light: #b08a48;
+  --app-glow-a: rgba(229, 193, 123, .10);
+  --app-glow-b: rgba(201, 42, 42, .10);
+  --panel-a: rgba(14, 40, 29, .86);
+  --panel-b: rgba(7, 22, 16, .92);
+  --panel-line: rgba(229, 193, 123, .22);
+  --scrim: rgba(4, 12, 9, .62);
+  --scrim-strong: rgba(4, 12, 9, .9);
+  --brass-700: #8a6a2f;
+  --brass-500: #e5c17b;
+  --brass-300: #f7dc9b;
+  --back-1: #2b4c7e;
+  --back-2: #1d3557;
+  --back-line: #e5c17b;
+  --back-mark: #f7dc9b;
+  --theme-name: "深绿暗金";
+  --scrim-rgb: 4, 14, 10;
+}
+
+html[data-theme="midnight"] {
+  --felt-900: #0b1026;
+  --felt-800: #121a3a;
+  --felt-700: #1a2550;
+  --felt-600: #233168;
+  --felt-500: #2e3f80;
+  --felt-center: #233168;
+  --felt-mid: #1a2550;
+  --felt-edge: #121a3a;
+  --app-base: #060918;
+  --felt-glow: rgba(108, 128, 220, .28);
+  --rim: #5a3a1e;
+  --rim-light: #a8763e;
+  --app-glow-a: rgba(77, 98, 190, .25);
+  --app-glow-b: rgba(215, 38, 61, .18);
+  --panel-a: rgba(35, 49, 104, .72);
+  --panel-b: rgba(18, 26, 58, .82);
+  --panel-line: rgba(255, 255, 255, .1);
+  --scrim: rgba(10, 13, 26, .6);
+  --scrim-strong: rgba(10, 13, 26, .92);
+  --brass-700: #8a6a1f;
+  --brass-500: #e9b949;
+  --brass-300: #ffd97a;
+  --back-1: #b3223a;
+  --back-2: #8e1b2e;
+  --back-line: #f6ead2;
+  --back-mark: #ffe7b0;
+  --theme-name: "午夜蓝绒";
+  --scrim-rgb: 10, 13, 26;
+}
+
+:root {
+  --ink-900: #0a0d1a;
+  --ink-700: #2a2f45;
+  --ink-500: #6b7690;
+  --ink-300: #a9b8b0;
+  --ink-100: #f1efe8;
+  --ink-0: #fff;
+  --crimson-700: #8e1b2e;
+  --crimson-600: #b3223a;
+  --crimson-500: #d7263d;
+  --crimson-300: #ff6b7d;
+  --card-face: #f6f1e6;
+  --card-face-trump: #fff1e6;
+  --card-line: #d9d4c7;
+  --card-red: #c92a2a;
+  --card-black: #1e2329;
+  --joker-big: #c8102e;
+  --joker-small: #22264a;
+  --badge-const: #7a1f1f;
+  --badge-const-bg: #fbe3d6;
+  --badge-joker: #3a2a00;
+  --badge-joker-bg: #f3d58a;
+  --badge-fan: #fff;
+  --badge-fan-bg: #8a6a2f;
+  --pt-bg: #c92a2a;
+  --pt-text: #fff;
+  --st-select: #4da3ff;
+  --st-select-glow: rgba(77, 163, 255, .55);
+  --st-reco: #3ddc97;
+  --st-legal: #7ee0a1;
+  --st-illegal-dim: .46;
+  --st-winner: #ffd97a;
+  --st-danger: #ff5a6e;
+  --st-ok: #3ddc97;
+  --team-dealer: #f2a541;
+  --team-dealer-soft: rgba(242, 165, 65, .18);
+  --team-idle: #b28dff;
+  --team-idle-soft: rgba(178, 141, 255, .18);
+  --font-ui: "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-display: "Noto Serif CJK SC", "Songti SC", serif;
+  --font-num: "SF Pro Rounded", "Noto Sans", system-ui, sans-serif;
+  --fs-2xs: 10px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 20px;
+  --fs-2xl: 26px;
+  --fs-3xl: 34px;
+  --fs-4xl: 44px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --r-xs: 4px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 26px;
+  --r-pill: 999px;
+  --sh-card: 0 1px 0 rgba(0, 0, 0, .25), 0 4px 10px rgba(0, 0, 0, .28);
+  --sh-lift: 0 10px 22px rgba(0, 0, 0, .4);
+  --sh-panel: 0 10px 30px rgba(0, 0, 0, .35);
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-inout: cubic-bezier(.65, 0, .35, 1);
+  --ease-in: cubic-bezier(.5, 0, .75, 0);
+  --ease-back: cubic-bezier(.34, 1.56, .64, 1);
+  --d-instant: 80ms;
+  --d-fast: 120ms;
+  --d-base: 200ms;
+  --d-flight: 280ms;
+  --d-slow: 380ms;
+  --d-stage: 600ms;
+  --touch-min: 44px;
+  --avatar: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --d-fast: 1ms;
+    --d-base: 1ms;
+    --d-flight: 1ms;
+    --d-slow: 1ms;
+    --d-stage: 1ms;
+  }
+}
+
+html.reduce-motion {
+  --d-fast: 1ms;
+  --d-base: 1ms;
+  --d-flight: 1ms;
+  --d-slow: 1ms;
+  --d-stage: 1ms;
+}

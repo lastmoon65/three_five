@@ -125,6 +125,10 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
   }
 
   /* ---------- 对局 ---------- */
+  function seatNickname(room, seatIdx) {
+    const seat = room.seats[seatIdx];
+    return seat ? (NICK.get(seat.username) || seat.username) : '?';
+  }
   function buildGameState(room, seatIdx, seq = 0) {
     const g = room.game;
     if (!g) return null;
@@ -170,24 +174,24 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
     }
     let message;
     if (s.phase === 'reveal') {
-      const who = revealActor != null && room.seats[revealActor] ? room.seats[revealActor].nickname : '?';
+      const who = revealActor != null ? seatNickname(room, revealActor) : '?';
       message = revealActor === seatIdx ? '轮到你了：选择亮牌或跳过' : '等待 ' + who + ' 亮牌';
     } else if (s.phase === 'tribute') {
       const st = s.tributeState;
       if (st && st.step === 'take') {
-        const who = room.seats[s.currentSeat] ? room.seats[s.currentSeat].nickname : '?';
+        const who = seatNickname(room, s.currentSeat);
         message = s.currentSeat === seatIdx ? '轮到你了：退一张主牌' : '等待 ' + who + ' 退贡';
       } else message = '进贡：庄家方给出最大牌';
     } else if (s.phase === 'bury') {
       message = s.currentSeat === seatIdx ? '庄家选 6 张无分牌扣底（底牌将公开）' : '等待庄家埋底';
     } else if (s.phase === 'trick') {
       if (s.trick && s.trick.winnerSeat != null) {
-        const who = room.seats[s.trick.winnerSeat] ? room.seats[s.trick.winnerSeat].nickname : '?';
+        const who = seatNickname(room, s.trick.winnerSeat);
         message = who + ' 赢得本墩' + (s.trick.pointsWon ? '，得 ' + s.trick.pointsWon + ' 分' : '');
       } else if (s.currentSeat === seatIdx) {
         message = '轮到你了：出牌';
       } else {
-        const who = room.seats[s.currentSeat] ? room.seats[s.currentSeat].nickname : '?';
+        const who = seatNickname(room, s.currentSeat);
         message = '等待 ' + who + ' 出牌';
       }
     } else if (s.phase === 'round_end') {
@@ -204,7 +208,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       const actor = actorSeat != null ? room.seats[actorSeat] : null;
       if (actor) {
         const actSession = sessions.get(actor.username);
-        if (!actSession || !actSession.ws) message = actor.nickname + ' 已离线，等待重连（本副暂停）';
+        if (!actSession || !actSession.ws) message = seatNickname(room, actorSeat) + ' 已离线，等待重连（本副暂停）';
       }
     }
     return {
@@ -228,6 +232,8 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       takeOptions,
       scores: s.scores.slice(),
       bottom: (s.phase === 'trick' || s.phase === 'round_end') && s.bottom ? s.bottom.map((c) => ({ ...c })) : [],
+      autoBury: s.autoBury ? { ...s.autoBury, cardIds: s.autoBury.cardIds.slice() } : null,
+      buriedBy: s.buriedBy,
       revealOptions,
       trick,
       playHints,
