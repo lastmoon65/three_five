@@ -58,10 +58,53 @@ export function sameIdSet(a, b) {
 export function playErrorToastText({ code = '', message = '' } = {}) {
   const text = typeof message === 'string' ? message.trim() : '';
   if (/[\u3400-\u9fff]/.test(text)) return text;
-  if (String(code).toUpperCase() === 'BAD_PLAY' || /FAILED_THROW_UNRESOLVED|ILLEGAL_RESPONSE|BAD_LEAD|THROW_NOT_TOP|CARD_NOT_IN_HAND/.test(text.toUpperCase())) {
+  const upperCode = String(code).toUpperCase();
+  const upperText = text.toUpperCase();
+  if ((upperCode === 'BAD_BURY' && /BURY_NO_POINTS/.test(upperText)) || upperText === 'BURY_NO_POINTS') {
+    return '埋底不能包含分牌，请重新选择';
+  }
+  if (upperCode === 'BAD_PLAY' || /FAILED_THROW_UNRESOLVED|ILLEGAL_RESPONSE|BAD_LEAD|THROW_NOT_TOP|CARD_NOT_IN_HAND/.test(upperText)) {
     return '请重新选择要出的牌';
   }
   return text || '操作未完成';
+}
+
+export function isPointCard(card) {
+  if (!card) return false;
+  if (Number(card.points) > 0) return true;
+  return card.rank === '5' || card.rank === '10' || card.rank === 'K';
+}
+
+export function isGamePaused(game) {
+  return /已离线|等待重连/.test(game?.message || '');
+}
+
+export function isHandCardClickable(card, game) {
+  if (!card || !game || isGamePaused(game)) return false;
+  const takeTurn = game.phase === 'tribute' && game.tributeState?.step === 'take' && game.currentSeat === game.me;
+  const buryTurn = game.phase === 'bury' && game.currentSeat === game.me;
+  const playTurn = game.phase === 'trick' && game.currentSeat === game.me;
+  if (takeTurn) return (game.takeOptions || []).map(String).includes(String(card.id));
+  if (buryTurn) return !isPointCard(card);
+  if (playTurn) {
+    const allowed = new Set((game.legalPlays || []).flatMap((play) => play.cardIds || []).map(String));
+    return allowed.has(String(card.id));
+  }
+  return false;
+}
+
+export function isHandCardDimmed(card, game) {
+  if (!card || !game) return false;
+  const takeTurn = game.phase === 'tribute' && game.tributeState?.step === 'take' && game.currentSeat === game.me;
+  const buryTurn = game.phase === 'bury' && game.currentSeat === game.me;
+  const playTurn = game.phase === 'trick' && game.currentSeat === game.me;
+  if (takeTurn) return !(game.takeOptions || []).map(String).includes(String(card.id));
+  if (buryTurn) return isPointCard(card);
+  if (playTurn) {
+    const allowed = new Set((game.legalPlays || []).flatMap((play) => play.cardIds || []).map(String));
+    return !allowed.has(String(card.id));
+  }
+  return false;
 }
 
 export function seatTeamLabel(seatIndex, dealerIndex) {

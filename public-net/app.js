@@ -5,6 +5,10 @@ import {
   handLayout,
   hasAutoBurySnapshot,
   isConstCard,
+  isGamePaused,
+  isHandCardClickable,
+  isHandCardDimmed,
+  isPointCard,
   isTrumpCard,
   matchLegalPlay,
   playErrorToastText,
@@ -14,7 +18,6 @@ import {
   sortHandForDisplay,
   SUIT_SYMBOLS,
   TOAST_MS,
-  uniqueCardIds,
 } from './ui-logic.js';
 
 const $ = (id) => document.getElementById(id);
@@ -400,7 +403,8 @@ function handleMessage(message) {
         showLogin('登录已失效，请重新登录');
         return;
       }
-      showToast(code === 'BAD_PLAY' ? playErrorToastText({ code, message: data.message }) : text, 'error');
+      const buryNoPoints = String(data.message || '').toUpperCase().includes('BURY_NO_POINTS');
+      showToast((code === 'BAD_PLAY' || code === 'BAD_BURY' || buryNoPoints) ? playErrorToastText({ code, message: data.message }) : text, 'error');
       if (state.screen === 'game' && state.game) renderGame(state.game);
       else if (state.screen === 'settle' && state.game) renderSettle(state.game);
       return;
@@ -658,11 +662,6 @@ function renderHand(game) {
   handEl.style.setProperty('--ch', cardHeight + 'px');
   const totalWidth = cardWidth + layout.step * Math.max(0, layout.perRow - 1);
   const startX = Math.max(0, (width - totalWidth) / 2);
-  const allowedIds = new Set(uniqueCardIds(game.legalPlays || []));
-  const takeSet = new Set((game.takeOptions || []).map(String));
-  const buryTurn = isBuryTurn(game);
-  const takeTurn = isTakeTurn(game);
-  const playTurn = isPlayTurn(game);
   const newRound = state.lastDealRound !== game.roundNo;
 
   sorted.forEach((card, index) => {
@@ -680,7 +679,7 @@ function renderHand(game) {
     button.style.setProperty('--cw', cardWidth + 'px');
     button.style.setProperty('--ch', cardHeight + 'px');
     button.style.zIndex = String(20 + row * 100 + col);
-    const clickable = (takeTurn && takeSet.has(String(card.id))) || buryTurn || (playTurn && allowedIds.has(String(card.id)));
+    const clickable = isHandCardClickable(card, game);
     const joker = card.suit === 'joker';
     const red = card.suit === 'heart' || card.suit === 'diamond' || (joker && card.rank === 'big');
     button.classList.add(red ? 'red' : 'black');
@@ -690,8 +689,7 @@ function renderHand(game) {
     if (number(card.points) > 0) button.classList.add('point');
     if (['J', 'Q', 'K'].includes(card.rank)) button.classList.add('high');
     if (clickable) button.classList.add('clickable');
-    if (isTakeTurn(game) && !takeSet.has(String(card.id))) button.classList.add('dim');
-    if (playTurn && !allowedIds.has(String(card.id))) button.classList.add('dim');
+    if (isHandCardDimmed(card, game)) button.classList.add('dim');
     if (state.selected.has(String(card.id))) button.classList.add('selected');
     if (state.recommended.has(String(card.id))) button.classList.add('recommended');
     if (newRound) button.classList.add('card-enter');
@@ -778,7 +776,8 @@ function miniCard(card, { back = false, revealedIds: ids = new Set() } = {}) {
 }
 
 function toggleCard(card) {
-  if (!state.game || state.awaiting || autoSelectionFor(state.game)) return;
+  if (!state.game || state.awaiting || isGamePaused(state.game) || autoSelectionFor(state.game)) return;
+  if (isBuryTurn(state.game) && isPointCard(card)) return;
   const id = String(card.id);
   if (isTakeTurn(state.game)) {
     state.selected.clear();
@@ -821,21 +820,23 @@ function renderGameActions(game) {
   const buryTurn = isBuryTurn(game);
   const playTurn = isPlayTurn(game);
   const revealTurn = game.phase === 'reveal' && game.revealActor === game.me;
+  const paused = isGamePaused(game);
   const auto = autoSelectionFor(game);
   const matched = playTurn ? matchLegalPlay([...state.selected], game.legalPlays || []) : null;
+  const locked = state.awaiting || paused;
 
   $('btn-hint').hidden = game.phase === 'bury';
-  $('btn-hint').disabled = !!auto || !playTurn || state.awaiting || !((game.legalPlays || []).length || (game.kongPlays || []).length || game.playHints?.auto);
-  $('btn-clear').disabled = !!auto || state.awaiting || state.selected.size === 0;
+  $('btn-hint').disabled = !!auto || !playTurn || locked || !((game.legalPlays || []).length || (game.kongPlays || []).length || game.playHints?.auto);
+  $('btn-clear').disabled = !!auto || locked || state.selected.size === 0;
   const playButton = $('btn-play');
   playButton.hidden = game.phase === 'bury';
-  playButton.disabled = !playTurn || state.awaiting || (!auto && !matched);
+  playButton.disabled = !playTurn || locked || (!auto && !matched);
   playButton.textContent = auto
     ? (auto.cardIds.length ? '垫出分牌' : '确认')
     : (matched ? '出牌 · ' + playOptionLabel(matched, game) : '出牌');
 
   $('btn-reveal-skip').hidden = !revealTurn;
-  $('btn-reveal-skip').disabled = state.awaiting;
+  $('btn-reveal-skip').disabled = locked;
   const options = $('reveal-options');
   options.innerHTML = '';
   if (revealTurn) {
@@ -845,23 +846,23 @@ function renderGameActions(game) {
       button.className = 'btn btn-ghost brass';
       button.dataset.revealIndex = String(index);
       button.textContent = option.level === 'wu' ? '亮五反' : '亮三反';
-      button.disabled = state.awaiting;
+      button.disabled = locked;
       button.addEventListener('click', () => submit({ type: 'reveal', data: { cardIds: option.cardIds } }));
       options.appendChild(button);
     });
   }
 
   $('btn-tribute-take').hidden = !takeTurn;
-  $('btn-tribute-take').disabled = state.awaiting || state.selected.size !== 1;
+  $('btn-tribute-take').disabled = locked || state.selected.size !== 1;
   $('btn-tribute-take').textContent = state.selected.size === 1 ? '退贡' : '选择 1 张';
 
   $('btn-bury').hidden = !buryTurn;
-  $('btn-bury').disabled = state.awaiting || state.selected.size !== 6;
+  $('btn-bury').disabled = locked || state.selected.size !== 6;
   $('btn-bury').textContent = state.selected.size === 6 ? '扣底并公开' : `扣底 ${state.selected.size}/6`;
 }
 
 function submit(message) {
-  if (state.awaiting) return;
+  if (state.awaiting || (state.game && isGamePaused(state.game))) return;
   state.awaiting = true;
   state.submittedRects = [...state.selected].map((id) => {
     const card = document.querySelector(`#my-hand [data-card-id="${CSS.escape(id)}"]`);

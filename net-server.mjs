@@ -129,6 +129,33 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
     const seat = room.seats[seatIdx];
     return seat ? (NICK.get(seat.username) || seat.username) : '?';
   }
+  function midGameOfflineSeat(room) {
+    const g = room && room.game;
+    if (!g) return null;
+    const s = g.state();
+    if (!['reveal', 'tribute', 'bury', 'trick'].includes(s.phase)) return null;
+    const seated = [];
+    for (let i = 0; i < room.seats.length; i++) {
+      if (room.seats[i]) seated.push(i);
+    }
+    const actorSeat = s.phase === 'reveal'
+      ? (s.revealOrder ? s.revealOrder[s.revealIdx] : null)
+      : s.currentSeat;
+    const order = [];
+    if (actorSeat != null && seated.includes(actorSeat)) order.push(actorSeat);
+    for (const i of seated) if (!order.includes(i)) order.push(i);
+    for (const i of order) {
+      const sess = sessions.get(room.seats[i].username);
+      if (!sess || !sess.ws) return i;
+    }
+    return null;
+  }
+  function rejectIfGamePaused(ws, room) {
+    const offlineSeat = midGameOfflineSeat(room);
+    if (offlineSeat == null) return false;
+    err(ws, 'GAME_PAUSED', '本副已暂停，等待重连');
+    return true;
+  }
   function buildGameState(room, seatIdx, seq = 0) {
     const g = room.game;
     if (!g) return null;
@@ -204,12 +231,8 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       message = '阶段：' + s.phase;
     }
     if (['reveal', 'tribute', 'bury', 'trick'].includes(s.phase)) {
-      const actorSeat = s.phase === 'reveal' ? revealActor : s.currentSeat;
-      const actor = actorSeat != null ? room.seats[actorSeat] : null;
-      if (actor) {
-        const actSession = sessions.get(actor.username);
-        if (!actSession || !actSession.ws) message = seatNickname(room, actorSeat) + ' 已离线，等待重连（本副暂停）';
-      }
+      const offlineSeat = midGameOfflineSeat(room);
+      if (offlineSeat != null) message = seatNickname(room, offlineSeat) + ' 已离线，等待重连（本副暂停）';
     }
     return {
       roomId: room.roomId,
@@ -384,6 +407,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         const roomId = userRoom.get(username);
         const room = roomId && rooms.get(roomId);
         if (!room || !room.game) { err(ws, 'NO_GAME', '游戏未开始'); return; }
+        if (rejectIfGamePaused(ws, room)) return;
         const g = room.game;
         if (g.state().phase !== 'reveal') { err(ws, 'BAD_PHASE', '当前不是亮牌阶段'); return; }
         const seatIdx = room.seats.findIndex((s) => s && s.username === username);
@@ -399,6 +423,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         const roomId = userRoom.get(username);
         const room = roomId && rooms.get(roomId);
         if (!room || !room.game) { err(ws, 'NO_GAME', '游戏未开始'); return; }
+        if (rejectIfGamePaused(ws, room)) return;
         const g = room.game;
         const st = g.state();
         if (st.phase !== 'tribute' || !st.tributeState || st.tributeState.step !== 'take') { err(ws, 'BAD_PHASE', '当前不是退贡阶段'); return; }
@@ -413,6 +438,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         const roomId = userRoom.get(username);
         const room = roomId && rooms.get(roomId);
         if (!room || !room.game) { err(ws, 'NO_GAME', '游戏未开始'); return; }
+        if (rejectIfGamePaused(ws, room)) return;
         const g = room.game;
         const st = g.state();
         if (st.phase !== 'bury') { err(ws, 'BAD_PHASE', '当前不是埋底阶段'); return; }
@@ -427,6 +453,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         const roomId = userRoom.get(username);
         const room = roomId && rooms.get(roomId);
         if (!room || !room.game) { err(ws, 'NO_GAME', '游戏未开始'); return; }
+        if (rejectIfGamePaused(ws, room)) return;
         const g = room.game;
         const st = g.state();
         if (st.phase !== 'trick') { err(ws, 'BAD_PHASE', '当前不是打牌阶段'); return; }

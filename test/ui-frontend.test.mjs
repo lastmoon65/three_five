@@ -7,6 +7,10 @@ import {
   cardLabel,
   handLayout,
   hasAutoBurySnapshot,
+  isGamePaused,
+  isHandCardClickable,
+  isHandCardDimmed,
+  isPointCard,
   matchLegalPlay,
   playErrorToastText,
   recommendedPlay,
@@ -200,4 +204,56 @@ test('竖屏窄屏亮牌选项避开底部安全区', () => {
   const css = readFileSync(new URL('../public-net/style.css', import.meta.url), 'utf8');
   const narrow = css.match(/@media \(max-width: 760px\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
   assert.match(narrow, /\.reveal-options\s*\{[^}]*bottom:\s*calc\(50px \+ env\(safe-area-inset-bottom\)\)/s);
+});
+
+test('埋底失败提示：分牌错误转为中文，出牌与已有中文文案不变', () => {
+  assert.equal(playErrorToastText({ code: 'BAD_BURY', message: 'BURY_NO_POINTS' }), '埋底不能包含分牌，请重新选择');
+  assert.equal(playErrorToastText({ message: 'BURY_NO_POINTS' }), '埋底不能包含分牌，请重新选择');
+  assert.equal(playErrorToastText({ code: 'BAD_BURY', message: '埋底不能包含分牌，请重新选择' }), '埋底不能包含分牌，请重新选择');
+  assert.doesNotMatch(playErrorToastText({ code: 'BAD_BURY', message: 'BURY_NO_POINTS' }), /BURY_NO_POINTS|BAD_BURY|[A-Za-z]/);
+  assert.equal(playErrorToastText({ code: 'BAD_PLAY', message: 'FAILED_THROW_UNRESOLVED' }), '请重新选择要出的牌');
+  assert.equal(playErrorToastText({ code: 'BAD_PLAY', message: '请重新选择要出的牌' }), '请重新选择要出的牌');
+});
+
+test('埋底阶段分牌不可选并压暗，非分牌仍可点选', () => {
+  const game = { phase: 'bury', currentSeat: 0, me: 0, message: '庄家选 6 张无分牌扣底（底牌将公开）' };
+  const heart5 = { id: 'heart_5', suit: 'heart', rank: '5', points: 5 };
+  const diamond5 = { id: 'diamond_5', suit: 'diamond', rank: '5', points: 5 };
+  const spade10 = { id: 'spade_10', suit: 'spade', rank: '10', points: 10 };
+  const clubK = { id: 'club_K', suit: 'club', rank: 'K', points: 10 };
+  const spade3 = { id: 'spade_3', suit: 'spade', rank: '3', points: 0 };
+  const joker = { id: 'joker_big', suit: 'joker', rank: 'big', points: 0 };
+  for (const card of [heart5, diamond5, spade10, clubK]) {
+    assert.equal(isPointCard(card), true);
+    assert.equal(isHandCardClickable(card, game), false);
+    assert.equal(isHandCardDimmed(card, game), true);
+  }
+  assert.equal(isPointCard(spade3), false);
+  assert.equal(isHandCardClickable(spade3, game), true);
+  assert.equal(isHandCardDimmed(spade3, game), false);
+  assert.equal(isHandCardClickable(joker, game), true);
+  assert.equal(isHandCardDimmed(joker, game), false);
+});
+
+test('对局暂停时手牌不可点选，写操作按暂停文案判定', () => {
+  const paused = { phase: 'reveal', currentSeat: 1, me: 1, revealActor: 1, message: 'P0 已离线，等待重连（本副暂停）' };
+  const live = { phase: 'reveal', currentSeat: 1, me: 1, revealActor: 1, message: '轮到你了：选择亮牌或跳过' };
+  const card = { id: 'spade_3', suit: 'spade', rank: '3', points: 0 };
+  assert.equal(isGamePaused(paused), true);
+  assert.equal(isGamePaused(live), false);
+  assert.equal(isHandCardClickable(card, paused), false);
+  const buryPaused = { phase: 'bury', currentSeat: 0, me: 0, message: '闲家 已离线，等待重连（本副暂停）' };
+  assert.equal(isGamePaused(buryPaused), true);
+  assert.equal(isHandCardClickable({ id: 'spade_3', rank: '3', points: 0 }, buryPaused), false);
+});
+
+test('前端错误处理把埋底分牌错误码交给中文 toast，AUTH_FAIL 仍单独处理', () => {
+  const app = readFileSync(new URL('../public-net/app.js', import.meta.url), 'utf8');
+  assert.match(app, /code === 'AUTH_FAIL'/);
+  assert.match(app, /playErrorToastText\(\{ code, message: data\.message \}\)/);
+  assert.match(app, /code === 'BAD_BURY'/);
+  assert.match(app, /BURY_NO_POINTS/);
+  assert.match(app, /isHandCardClickable\(card, game\)/);
+  assert.match(app, /isHandCardDimmed\(card, game\)/);
+  assert.match(app, /isGamePaused\(game\)/);
 });
