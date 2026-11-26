@@ -186,3 +186,9 @@ test('toast 按竖屏、横屏与宽屏分别定位', () => {
   assert.match(css, /@media \(min-aspect-ratio: 1\/1\)\s*\{\s*\.toast\s*\{[^}]*top:\s*calc\(8px \+ env\(safe-area-inset-top\)\)/s);
   assert.match(css, /@media \(min-aspect-ratio: 1\/1\) and \(min-width: 1100px\) and \(min-height: 620px\)\s*\{\s*\.toast\s*\{[^}]*top:\s*calc\(16px \+ env\(safe-area-inset-top\)\)/s);
 });
+
+test('竖屏窄屏亮牌选项避开底部安全区', () => {
+  const css = readFileSync(new URL('../public-net/style.css', import.meta.url), 'utf8');
+  const narrow = css.match(/@media \(max-width: 760px\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(narrow, /\.reveal-options\s*\{[^}]*bottom:\s*calc\(50px \+ env\(safe-area-inset-bottom\)\)/s);
+});
