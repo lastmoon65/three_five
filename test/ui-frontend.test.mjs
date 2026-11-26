@@ -195,3 +195,9 @@ test('打牌失败提示：英文错误码转换为中文重选文案', () => {
   assert.equal(playErrorToastText({ code: 'BAD_PLAY', message: '请重新选择要出的牌' }), '请重新选择要出的牌');
   assert.doesNotMatch(playErrorToastText({ code: 'BAD_PLAY', message: 'FAILED_THROW_UNRESOLVED' }), /[A-Za-z]/);
 });
+
+test('竖屏窄屏亮牌选项避开底部安全区', () => {
+  const css = readFileSync(new URL('../public-net/style.css', import.meta.url), 'utf8');
+  const narrow = css.match(/@media \(max-width: 760px\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(narrow, /\.reveal-options\s*\{[^}]*bottom:\s*calc\(50px \+ env\(safe-area-inset-bottom\)\)/s);
+});

@@ -498,7 +498,7 @@ body[data-screen="settle"] .menu-fab { display: grid; place-items: center; top: 
   .actionbar #btn-play { min-width: 82px; }
   .action-main { flex: 1; justify-content: flex-end; }
   .action-special { flex: 0 0 auto; }
-  .reveal-options { position: absolute; right: 0; bottom: 50px; padding: 7px; border-radius: var(--r-md); background: rgba(var(--scrim-rgb), .92); border: 1px solid var(--panel-line); }
+  .reveal-options { position: absolute; right: 0; bottom: calc(50px + env(safe-area-inset-bottom)); padding: 7px; border-radius: var(--r-md); background: rgba(var(--scrim-rgb), .92); border: 1px solid var(--panel-line); }
 }
 
 @media (max-width: 400px) {
