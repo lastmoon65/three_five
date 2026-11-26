@@ -55,6 +55,15 @@ export function sameIdSet(a, b) {
   return left.every((id, index) => id === right[index]);
 }
 
+export function playErrorToastText({ code = '', message = '' } = {}) {
+  const text = typeof message === 'string' ? message.trim() : '';
+  if (/[\u3400-\u9fff]/.test(text)) return text;
+  if (String(code).toUpperCase() === 'BAD_PLAY' || /FAILED_THROW_UNRESOLVED|ILLEGAL_RESPONSE|BAD_LEAD|THROW_NOT_TOP|CARD_NOT_IN_HAND/.test(text.toUpperCase())) {
+    return '请重新选择要出的牌';
+  }
+  return text || '操作未完成';
+}
+
 export function seatTeamLabel(seatIndex, dealerIndex) {
   const seat = Math.trunc(Number(seatIndex));
   const dealer = Math.trunc(Number(dealerIndex));
@@ -92,7 +101,7 @@ export function autoFourClearPlay({ trick = null, playHints = null, legalPlays =
   if (trick?.dimension !== 'four_clear' || playHints?.auto !== true) return null;
   if (!Array.isArray(legalPlays) || legalPlays.length !== 1) return null;
   const legalIds = legalPlays[0]?.cardIds;
-  if (!Array.isArray(legalIds)) return null;
+  if (!Array.isArray(legalIds) || legalIds.length === 0) return null;
   const allowed = Array.isArray(playHints.allowed) ? playHints.allowed : legalIds;
   const cardIds = sameIdSet(allowed, legalIds) ? allowed : legalIds;
   return { cardIds: cardIds.map(String) };

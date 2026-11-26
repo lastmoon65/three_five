@@ -192,6 +192,14 @@ async function skipAllReveals(users) {
 function isMainCard(c) {
   return c.suit === 'heart' || c.suit === 'joker' || (c.suit === 'diamond' && c.rank === '5') || (c.suit === 'spade' && c.rank === 'Q') || c.rank === 'J' || c.rank === '2';
 }
+function tributeTakeCandidate(hand) {
+  const mains = hand.filter(isMainCard);
+  const nonScoringMains = mains.filter((c) => c.points === 0);
+  if (nonScoringMains.length) return nonScoringMains[0];
+  if (mains.length) return mains[0];
+  const nonScoring = hand.filter((c) => c.points === 0);
+  return nonScoring[0] || hand[0];
+}
 async function reachBury(users, roomId) {
   await skipAllReveals(users);
   const st = await waitNewestGame(users[0].inbox, (d) => d.phase === 'tribute' && d.tributeState);
@@ -200,7 +208,7 @@ async function reachBury(users, roomId) {
     const pair = pairs[i];
     const takerUser = users.find((u) => u.seat === pair.taker);
     const ts = await waitNewestGame(takerUser.inbox, (d) => d.phase === 'tribute' && d.tributeState && d.tributeState.step === 'take' && d.tributeState.pairIdx === i);
-    const card = ts.data.myHand.find(isMainCard) || ts.data.myHand[0];
+    const card = tributeTakeCandidate(ts.data.myHand);
     send(takerUser.ws, { type: 'tribute_take', data: { cardId: card.id } });
   }
   await waitNewestGame(users[0].inbox, (d) => d.phase === 'bury');
@@ -215,20 +223,41 @@ test('单进贡：自动进贡 -> 退贡 -> 埋底公开（含校验）', async 
   // 进贡自动执行
   const st = await waitNewestGame(users[0].inbox, (d) => d.phase === 'tribute');
   assert.equal(st.data.tributeState.step, 'take');
-  assert.ok(st.data.lastGive && st.data.lastGive.card);
+  for (const u of users) {
+    const own = await waitNewestGame(u.inbox, (d) => d.phase === 'tribute' && d.lastGive && d.tributeState && d.tributeState.step === 'take');
+    assert.equal(own.data.me, u.seat);
+    const { from, to, card } = own.data.lastGive;
+    if (own.data.me === from || own.data.me === to) {
+      assert.ok(card && card.rank && card.suit, '进贡双方必须看到牌面');
+    } else {
+      assert.ok(!card || (card.hidden === true && !('rank' in card) && !('suit' in card)), '旁观者不得看到进贡牌面');
+    }
+  }
   assert.equal(st.data.tributeState.pairs.length, 1);
   const taker = st.data.tributeState.pairs[0].taker;
   const takerUser = users.find((u) => u.seat === taker);
   const ts = await waitNewestGame(takerUser.inbox, (d) => d.phase === 'tribute' && d.tributeState && d.tributeState.step === 'take');
   const hand = ts.data.myHand;
+  const nonScoringMains = hand.filter((c) => isMainCard(c) && c.points === 0);
+  if (nonScoringMains.length) {
+    assert.deepEqual(new Set(ts.data.takeOptions), new Set(nonScoringMains.map((c) => c.id)));
+  }
   // 有主牌时退副牌被拒
   if (hand.some(isMainCard)) {
     const sub = hand.find((c) => !isMainCard(c));
-    send(takerUser.ws, { type: 'tribute_take', data: { cardId: sub.id } });
+    if (sub) {
+      send(takerUser.ws, { type: 'tribute_take', data: { cardId: sub.id } });
+      await waitError(takerUser.inbox, 'BAD_TAKE');
+    }
+  }
+  // 有非分主牌时退分主牌被拒
+  const scoringMain = hand.find((c) => isMainCard(c) && c.points > 0);
+  if (nonScoringMains.length && scoringMain) {
+    send(takerUser.ws, { type: 'tribute_take', data: { cardId: scoringMain.id } });
     await waitError(takerUser.inbox, 'BAD_TAKE');
   }
   // 正常退主牌
-  const card = hand.find(isMainCard) || hand[0];
+  const card = tributeTakeCandidate(hand);
   send(takerUser.ws, { type: 'tribute_take', data: { cardId: card.id } });
   const bury = await waitNewestGame(users[0].inbox, (d) => d.phase === 'bury');
   const dealer = bury.data.dealerIndex;

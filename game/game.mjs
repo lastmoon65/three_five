@@ -5,6 +5,7 @@ const RANKS = ['3','4','5','6','7','8','9','10','J','Q','K','A','2'];
 const SUITS = ['spade','heart','club','diamond'];
 const POINT_MAP = { '5':5, '10':10, 'K':10 };
 const RANK_VALUE = { '3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14,'2':15 };
+const TRUE_KONG_RANK_VALUE = { '2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14 };
 const HEART_MAIN_POWER = { A:214,K:213,Q:212,'10':210,'9':209,'8':208,'7':207,'6':206,'5':205,'4':204,'3':203 };
 const SUB_POWER = { A:114,K:113,Q:112,'10':110,'9':109,'8':108,'7':107,'6':106,'5':105,'4':104,'3':103 };
 
@@ -52,6 +53,22 @@ export function followSuit(c) {
 }
 
 function sameRank(cards) { return cards.length > 0 && cards.every(c => c.rank === cards[0].rank); }
+
+export function kongDimension(cards) {
+  if (cards.length !== 4) return null;
+  if (sameRank(cards)) return cards[0].rank === '4' ? 'four_clear' : 'true_kong';
+  const q = cards.find(c => c.id === 'spade_Q');
+  if (!q) return null;
+  const rest = cards.filter(c => c.id !== q.id);
+  if (rest.length === 3 && sameRank(rest) && rest[0].rank !== 'Q') return 'fake_kong';
+  return null;
+}
+
+function sameIdSet(cards, ids) {
+  if (cards.length !== ids.length) return false;
+  const have = new Set(cards.map(c => c.id));
+  return ids.every(id => have.has(id));
+}
 
 export function newGame(names, rng) { return new Game(names, rng); }
 
@@ -215,12 +232,25 @@ export class Game {
     const card = this.cardById(cardId);
     if (this.hands[p.taker].indexOf(card) < 0) throw new Error('CARD_NOT_IN_HAND');
     const mains = this.handMain(p.taker);
-    if (mains.length > 0 && !(isMain(card) || this.isRevealed(card))) throw new Error('NEED_MAIN_CARD');
+    const legal = this.legalTributeTakes(p.taker);
+    if (!legal.includes(card)) {
+      if (mains.length > 0 && !(isMain(card) || this.isRevealed(card))) throw new Error('NEED_MAIN_CARD');
+      throw new Error('TRIBUTE_NO_POINTS');
+    }
     this.hands[p.taker] = this.hands[p.taker].filter(c => c !== card);
     this.hands[p.giver].push(card);
     st.pairIdx++;
     if (st.pairIdx >= st.pairs.length) this.enterBury();
     else { st.step = 'give'; this.currentSeat = st.pairs[st.pairIdx].giver; }
+  }
+
+  legalTributeTakes(seat) {
+    const hand = this.hands[seat] || [];
+    const mains = this.handMain(seat);
+    const nonScoringMains = mains.filter(c => c.points === 0);
+    if (mains.length > 0) return nonScoringMains.length > 0 ? nonScoringMains : mains.slice();
+    const nonScoring = hand.filter(c => c.points === 0);
+    return nonScoring.length > 0 ? nonScoring : hand.slice();
   }
 
   // ---------- 埋底 ----------
@@ -265,14 +295,11 @@ export class Game {
   leadLegal(cardIds) {
     const cards = cardIds.map(id => this.cardById(id));
     const n = cards.length;
+    if (n === 0) return { ok: false, reason: 'BAD_LEAD' };
     if (n === 1) return { ok: true, dimension: 'single' };
-    if (n === 4 && sameRank(cards)) return { ok: true, dimension: cards[0].rank === '4' ? 'four_clear' : 'true_kong' };
     if (n === 4) {
-      const q = cards.find(c => c.id === 'spade_Q');
-      if (q) {
-        const rest = cards.filter(c => c.id !== 'spade_Q');
-        if (rest.length === 3 && sameRank(rest)) return { ok: true, dimension: 'fake_kong' };
-      }
+      const dimension = kongDimension(cards);
+      if (dimension) return { ok: true, dimension };
       return { ok: false, reason: 'BAD_LEAD' };
     }
     const follow = followSuit(cards[0]);
@@ -301,7 +328,7 @@ export class Game {
   responseLegal(cardIds) {
     const t = this.trick;
     if (!t || !t.dimension || t.plays.length === 0) return false;
-    if (cardIds.length === 0) return t.dimension === 'four_clear' && this.handScoring(this.currentSeat).length === 0;
+    if (cardIds.length === 0) return false;
     const cards = cardIds.map(id => this.cardById(id));
     const handSet = new Set(this.handIds(this.currentSeat));
     if (cardIds.length !== new Set(cardIds).size) return false;
@@ -327,9 +354,7 @@ export class Game {
     }
     if (dim === 'true_kong') return cards.length === Math.min(4, this.hands[this.currentSeat].length);
     if (dim === 'four_clear') {
-      const scoring = this.handScoring(this.currentSeat);
-      if (cards.length !== scoring.length) return false;
-      return cards.every(c => c.points > 0) && scoring.every(c => cards.includes(c));
+      return this.fourClearCombos(this.currentSeat).some(comb => sameIdSet(cards, comb.map(c => c.id)));
     }
     return false;
   }
@@ -359,6 +384,23 @@ export class Game {
     return have === need;
   }
 
+  fourClearCombos(seat) {
+    const hand = this.hands[seat];
+    if (hand.length === 0) return [];
+    if (hand.length < 4) return [hand.slice()];
+    const scoring = this.handScoring(seat);
+    const scoringIds = new Set(scoring.map(c => c.id));
+    const mains = this.handMain(seat).filter(c => !scoringIds.has(c.id));
+    const subs = this.handSub(seat).filter(c => !scoringIds.has(c.id));
+    const need = 4 - scoring.length;
+    if (need <= 0) return combosOf(scoring, 4);
+    if (mains.length >= need) {
+      return combosOf(mains, need).map(extra => scoring.concat(extra));
+    }
+    const subNeed = need - mains.length;
+    return combosOf(subs, subNeed).map(extra => scoring.concat(mains, extra));
+  }
+
   legalPlays() {
     if (this.phase !== 'trick' || !this.trick) return [];
     const t = this.trick;
@@ -367,18 +409,10 @@ export class Game {
     if (t.plays.length === 0 || t.plays.length === 4) {
       const out = [];
       for (const c of hand) out.push({ cardIds: [c.id], dimension: 'single' });
-      const cats = {};
-      for (const c of hand) { const f = followSuit(c); if (f) (cats[f] ||= []).push(c); }
-      for (const list of Object.values(cats)) {
-        list.sort((a, b) => (this.powerOf(b) - this.powerOf(a)) || a.id.localeCompare(b.id));
-        for (let n = 2; n <= list.length; n++) out.push({ cardIds: list.slice(0, n).map(c => c.id), dimension: 'throw' });
-      }
-      const mains = this.handMain(seat).slice().sort((a, b) => (this.powerOf(b) - this.powerOf(a)) || a.id.localeCompare(b.id));
-      for (let n = 2; n <= mains.length; n++) out.push({ cardIds: mains.slice(0, n).map(c => c.id), dimension: 'throw' });
       const q = hand.find(c => c.id === 'spade_Q');
       if (q) {
         const byRank = {};
-        for (const c of hand) if (c.id !== 'spade_Q') (byRank[c.rank] ||= []).push(c);
+        for (const c of hand) if (c.id !== 'spade_Q' && c.rank !== 'Q') (byRank[c.rank] ||= []).push(c);
         for (const list of Object.values(byRank)) {
           if (list.length < 3) continue;
           for (const three of combosOf(list, 3)) out.push({ cardIds: [q.id, ...three.map(c => c.id)], dimension: 'fake_kong' });
@@ -389,6 +423,14 @@ export class Game {
       for (const list of Object.values(byRank)) {
         if (list.length === 4) out.push({ cardIds: list.map(c => c.id), dimension: list[0].rank === '4' ? 'four_clear' : 'true_kong' });
       }
+      const cats = {};
+      for (const c of hand) { const f = followSuit(c); if (f) (cats[f] ||= []).push(c); }
+      for (const list of Object.values(cats)) {
+        list.sort((a, b) => (this.powerOf(b) - this.powerOf(a)) || a.id.localeCompare(b.id));
+        for (let n = 2; n <= list.length; n++) out.push({ cardIds: list.slice(0, n).map(c => c.id), dimension: 'throw' });
+      }
+      const mains = this.handMain(seat).slice().sort((a, b) => (this.powerOf(b) - this.powerOf(a)) || a.id.localeCompare(b.id));
+      for (let n = 2; n <= mains.length; n++) out.push({ cardIds: mains.slice(0, n).map(c => c.id), dimension: 'throw' });
       return dedupe(out);
     }
     const dim = t.dimension;
@@ -407,8 +449,7 @@ export class Game {
       if (hand.length < 4) out.push({ cardIds: hand.map(c => c.id), dimension: 'true_kong' });
       else for (const comb of combosOf(hand, 4)) out.push({ cardIds: comb.map(c => c.id), dimension: 'true_kong' });
     } else if (dim === 'four_clear') {
-      const scoring = this.handScoring(seat);
-      out.push({ cardIds: scoring.map(c => c.id), dimension: 'four_clear' });
+      for (const comb of this.fourClearCombos(seat)) out.push({ cardIds: comb.map(c => c.id), dimension: 'four_clear' });
     }
     return dedupe(out);
   }
@@ -428,8 +469,13 @@ export class Game {
     if (dim === 'fake_kong') return { count: 4, allowed: [...new Set(this.legalPlays().flatMap(p => p.cardIds))], dimension: 'fake_kong' };
     if (dim === 'true_kong') return { count: 4, allowed: this.handIds(seat), dimension: 'true_kong' };
     if (dim === 'four_clear') {
-      const scoring = this.handScoring(seat);
-      return { count: scoring.length, allowed: scoring.map(c => c.id), dimension: 'four_clear', auto: true };
+      const plays = this.legalPlays();
+      return {
+        count: Math.min(4, this.hands[seat].length),
+        allowed: [...new Set(plays.flatMap(p => p.cardIds))],
+        dimension: 'four_clear',
+        auto: plays.length === 1,
+      };
     }
     return null;
   }
@@ -445,10 +491,44 @@ export class Game {
     for (const id of ids) if (!handSet.has(id)) throw new Error('CARD_NOT_IN_HAND');
     if (this.trick.plays.length === 0) {
       const r = this.leadLegal(ids);
-      if (!r.ok) throw new Error(r.reason || 'BAD_LEAD');
+      if (!r.ok) {
+        if (r.reason === 'THROW_NOT_TOP' && ids.length > 1) {
+          const forced = ids.map(id => this.cardById(id))
+            .sort((a, b) => (this.powerOf(a) - this.powerOf(b)) || a.id.localeCompare(b.id))[0];
+          this.trick.dimension = 'single';
+          this.trick.plays.push({ seat, cardIds: [forced.id] });
+          this.advance();
+          return;
+        }
+        throw new Error(r.reason || 'BAD_LEAD');
+      }
       this.trick.dimension = r.dimension;
     } else {
-      if (!this.responseLegal(ids)) throw new Error('ILLEGAL_RESPONSE');
+      if (!this.responseLegal(ids)) {
+        if (this.trick.dimension === 'throw' && this.trick.plays[0].cardIds.length > 1) {
+          const selected = [...new Set(ids)].map(id => this.cardById(id));
+          const n = Math.min(this.trick.plays[0].cardIds.length, this.hands[seat].length);
+          const compareCards = (a, b) => (this.powerOf(a) - this.powerOf(b)) || a.id.localeCompare(b.id);
+          let best = null;
+          for (const comb of combosOf(selected, n)) {
+            const sorted = comb.slice().sort(compareCards);
+            if (!this.responseLegal(sorted.map(c => c.id))) continue;
+            if (!best) { best = sorted; continue; }
+            for (let i = 0; i < n; i++) {
+              const diff = compareCards(sorted[i], best[i]);
+              if (diff < 0) { best = sorted; break; }
+              if (diff > 0) break;
+            }
+          }
+          if (best) {
+            this.trick.plays.push({ seat, cardIds: best.map(c => c.id) });
+            this.advance();
+            return;
+          }
+          throw new Error('请重新选择要出的牌');
+        }
+        throw new Error('ILLEGAL_RESPONSE');
+      }
     }
     this.trick.plays.push({ seat, cardIds: ids });
     this.advance();
@@ -480,7 +560,15 @@ export class Game {
     t.pointsWon = pts;
     for (const p of plays) this.hands[p.seat] = this.hands[p.seat].filter(c => !p.cardIds.includes(c.id));
     this.currentSeat = winnerSeat;
-    if (this.hands.every(h => h.length === 0)) this.finishRound();
+    if (this.hands.every(h => h.length === 0)) {
+      this.finishRound();
+      return;
+    }
+    if (this.hands[winnerSeat].length === 0) {
+      let next = (winnerSeat + 3) % 4;
+      for (let i = 0; i < 4 && this.hands[next].length === 0; i++) next = (next + 3) % 4;
+      if (this.hands[next].length > 0) this.currentSeat = next;
+    }
   }
 
   resolveSingle(plays) {
@@ -518,7 +606,7 @@ export class Game {
     }).filter(Boolean);
     if (kongs.length === 0) return plays[0].seat;
     let best = kongs[0];
-    for (const k of kongs) if (RANK_VALUE[k.rank] > RANK_VALUE[best.rank]) best = k;
+    for (const k of kongs) if (TRUE_KONG_RANK_VALUE[k.rank] > TRUE_KONG_RANK_VALUE[best.rank]) best = k;
     return plays[best.i].seat;
   }
 

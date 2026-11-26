@@ -8,6 +8,7 @@ import {
   handLayout,
   hasAutoBurySnapshot,
   matchLegalPlay,
+  playErrorToastText,
   recommendedPlay,
   seatTeamLabel,
   TOAST_MS,
@@ -65,8 +66,9 @@ test('出牌按钮匹配只认服务端 legalPlays 的集合相等', () => {
   assert.equal(matchLegalPlay(['heart_K', 'heart_A'], legalPlays)?.dimension, 'throw');
   assert.equal(matchLegalPlay(['heart_A'], legalPlays), null);
   assert.equal(matchLegalPlay(['heart_A', 'heart_K', 'heart_Q'], legalPlays), null);
-  const emptyPlay = { cardIds: [], dimension: 'four_clear' };
-  assert.deepEqual(matchLegalPlay([], [emptyPlay]), emptyPlay);
+  const kongPlay = { cardIds: ['spade_Q', 'spade_A', 'club_A', 'diamond_A'], dimension: 'fake_kong' };
+  assert.deepEqual(matchLegalPlay(['diamond_A', 'club_A', 'spade_A', 'spade_Q'], [kongPlay]), kongPlay);
+  assert.equal(matchLegalPlay([], [kongPlay]), null);
 });
 
 test('推荐牌只从服务端 kongPlays/playHints/legalPlays 中取', () => {
@@ -77,14 +79,14 @@ test('推荐牌只从服务端 kongPlays/playHints/legalPlays 中取', () => {
   assert.deepEqual(recommendedPlay({ playHints: { auto: true, allowed: ['spade_5', 'heart_5'] } }), ['spade_5', 'heart_5']);
 });
 
-test('四清应答只自动采用服务端唯一合法出牌，空牌集也保留可提交状态', () => {
+test('四清应答只自动采用服务端唯一合法出牌，空牌集不再自动提交', () => {
   const trick = { dimension: 'four_clear' };
-  const playHints = { auto: true, allowed: ['spade_10', 'club_5'] };
-  const legalPlays = [{ cardIds: ['spade_10', 'club_5'], dimension: 'four_clear' }];
-  assert.deepEqual(autoFourClearPlay({ trick, playHints, legalPlays }), { cardIds: ['spade_10', 'club_5'] });
-  assert.deepEqual(
+  const playHints = { auto: true, allowed: ['spade_10', 'club_5', 'club_2', 'spade_3'] };
+  const legalPlays = [{ cardIds: ['spade_10', 'club_5', 'club_2', 'spade_3'], dimension: 'four_clear' }];
+  assert.deepEqual(autoFourClearPlay({ trick, playHints, legalPlays }), { cardIds: ['spade_10', 'club_5', 'club_2', 'spade_3'] });
+  assert.equal(
     autoFourClearPlay({ trick, playHints: { auto: true, allowed: [] }, legalPlays: [{ cardIds: [], dimension: 'four_clear' }] }),
-    { cardIds: [] },
+    null,
   );
   assert.equal(autoFourClearPlay({ trick: { dimension: 'single' }, playHints, legalPlays }), null);
   assert.equal(autoFourClearPlay({ trick, playHints: { auto: false, allowed: [] }, legalPlays }), null);
@@ -185,4 +187,11 @@ test('toast 按竖屏、横屏与宽屏分别定位', () => {
   assert.match(css, /\.toast\s*\{[^}]*top:\s*calc\(56px \+ env\(safe-area-inset-top\)\)[^}]*pointer-events:\s*none/s);
   assert.match(css, /@media \(min-aspect-ratio: 1\/1\)\s*\{\s*\.toast\s*\{[^}]*top:\s*calc\(8px \+ env\(safe-area-inset-top\)\)/s);
   assert.match(css, /@media \(min-aspect-ratio: 1\/1\) and \(min-width: 1100px\) and \(min-height: 620px\)\s*\{\s*\.toast\s*\{[^}]*top:\s*calc\(16px \+ env\(safe-area-inset-top\)\)/s);
+});
+
+test('打牌失败提示：英文错误码转换为中文重选文案', () => {
+  assert.equal(playErrorToastText({ code: 'BAD_PLAY', message: 'FAILED_THROW_UNRESOLVED' }), '请重新选择要出的牌');
+  assert.equal(playErrorToastText({ code: 'BAD_PLAY', message: 'ILLEGAL_RESPONSE' }), '请重新选择要出的牌');
+  assert.equal(playErrorToastText({ code: 'BAD_PLAY', message: '请重新选择要出的牌' }), '请重新选择要出的牌');
+  assert.doesNotMatch(playErrorToastText({ code: 'BAD_PLAY', message: 'FAILED_THROW_UNRESOLVED' }), /[A-Za-z]/);
 });

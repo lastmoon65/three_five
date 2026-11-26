@@ -6,7 +6,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { ACCOUNTS } from './config.mjs';
-import { Game } from './game/game.mjs';
+import { Game, kongDimension } from './game/game.mjs';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -140,14 +140,16 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
     }
     let takeOptions = [];
     if (s.phase === 'tribute' && s.tributeState && s.tributeState.step === 'take' && s.currentSeat === seatIdx) {
-      const revealedSet = new Set(s.revealed.map((r) => r.id));
-      const mains = s.hands[seatIdx].filter((c) => c.suit === 'heart' || c.suit === 'joker' || (c.suit === 'diamond' && c.rank === '5') || (c.suit === 'spade' && c.rank === 'Q') || c.rank === 'J' || c.rank === '2' || revealedSet.has(c.id));
-      takeOptions = (mains.length ? mains : s.hands[seatIdx]).map((c) => c.id);
+      takeOptions = g.legalTributeTakes(seatIdx).map((c) => c.id);
     }
     let lastGive = null;
     if (s.lastGive) {
-      const card = g.cardById(s.lastGive.cardId);
-      lastGive = { from: s.lastGive.from, to: s.lastGive.to, card: { id: card.id, rank: card.rank, suit: card.suit, points: card.points } };
+      const visible = seatIdx === s.lastGive.from || seatIdx === s.lastGive.to;
+      lastGive = { from: s.lastGive.from, to: s.lastGive.to };
+      if (visible) {
+        const card = g.cardById(s.lastGive.cardId);
+        lastGive.card = { id: card.id, rank: card.rank, suit: card.suit, points: card.points };
+      }
     }
     let trick = s.trick ? JSON.parse(JSON.stringify(s.trick)) : null;
     let playHints = null;
@@ -161,15 +163,13 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       const seen = new Set();
       for (const p of legalPlays) {
         const cards = p.cardIds.map((id) => g.cardById(id));
-        const isKong = p.dimension === 'four_clear' || (cards.length === 4 && cards.every((c) => c.rank === cards[0].rank)) || (p.dimension === 'fake_kong' && cards.some((c) => c.id === 'spade_Q'));
-        if (!isKong) continue;
+        const kind = kongDimension(cards);
+        if (!kind) continue;
         const key = p.cardIds.slice().sort().join(',');
         if (seen.has(key)) continue;
         seen.add(key);
-        const label = cards.length === 4 && cards.every((c) => c.rank === cards[0].rank)
-          ? (cards[0].rank === '4' ? '四清' : '真杠' + cards[0].rank)
-          : '假杠';
-        kongPlays.push({ cardIds: p.cardIds.slice(), dimension: p.dimension, label });
+        const label = kind === 'four_clear' ? '四清' : kind === 'true_kong' ? '真杠' + cards[0].rank : '假杠';
+        kongPlays.push({ cardIds: p.cardIds.slice(), dimension: kind, label });
       }
     }
     let message;

@@ -7,6 +7,7 @@ import {
   isConstCard,
   isTrumpCard,
   matchLegalPlay,
+  playErrorToastText,
   recommendedPlay,
   sameIdSet,
   seatTeamLabel,
@@ -399,7 +400,7 @@ function handleMessage(message) {
         showLogin('登录已失效，请重新登录');
         return;
       }
-      showToast(text, 'error');
+      showToast(code === 'BAD_PLAY' ? playErrorToastText({ code, message: data.message }) : text, 'error');
       if (state.screen === 'game' && state.game) renderGame(state.game);
       else if (state.screen === 'settle' && state.game) renderSettle(state.game);
       return;

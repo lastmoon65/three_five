@@ -161,7 +161,7 @@ test('单进贡：进最大牌、退任意主牌、手牌守恒（§5.2）', () 
   g.dealerIndex = 0;
   g.tributePlan = 'single';
   setHand(g, 0, ['heart_A', 'heart_K', 'spade_A', 'spade_K', 'spade_10', 'spade_9', 'spade_8', 'spade_7', 'spade_6', 'spade_4', 'spade_3', 'diamond_A']);
-  setHand(g, 3, ['heart_Q', 'club_A', 'club_K', 'club_10', 'club_9', 'club_8', 'club_7', 'club_6', 'club_5', 'club_4', 'club_3', 'diamond_K']);
+  setHand(g, 3, ['heart_Q', 'club_A', 'club_K', 'club_10', 'club_9', 'club_8', 'club_7', 'club_6', 'club_5', 'club_4', 'club_3', 'diamond_5']);
   setHand(g, 2, ['spade_2', 'club_2', 'diamond_2', 'club_A', 'club_K', 'club_10', 'club_9', 'club_8', 'club_7', 'club_6', 'club_4', 'club_3']);
   setHand(g, 1, ['heart_10', 'heart_9', 'heart_8', 'heart_7', 'heart_6', 'heart_5', 'heart_4', 'heart_3', 'diamond_10', 'diamond_9', 'diamond_8', 'diamond_7']);
   g.enterTribute();
@@ -173,6 +173,9 @@ test('单进贡：进最大牌、退任意主牌、手牌守恒（§5.2）', () 
   assert.equal(g.hands[0].length, before0 - 1);
   assert.equal(g.hands[3].length, before3 + 1);
   assert.equal(g.state().currentSeat, 3);
+  // 按 TF-20261126-006 新规则：有非分主牌时必须退非分主牌
+  assert.deepEqual(g.legalTributeTakes(3).map(c => c.id), ['heart_Q', 'heart_A']);
+  assert.throws(() => g.tributeTake('diamond_5'), /TRIBUTE_NO_POINTS/);
   // 退贡必须是主牌
   assert.throws(() => g.tributeTake('club_3'), /NEED_MAIN_CARD/);
   g.tributeTake('heart_Q');
@@ -303,13 +306,20 @@ test('同牌力先出者为大（副J 598 并列，§2.1/§3.2）', () => {
 // ---------- 打牌：甩牌维度（§3.2/§3.3） ----------
 test('花色甩：必须是同花色前 N 张', () => {
   const g = craft();
-  startTrickAt(g, 0, [
+  const hands = [
     ['spade_A', 'spade_K', 'spade_10', 'spade_5', 'spade_6', 'spade_7', 'spade_8', 'spade_9', 'heart_A', 'heart_K', 'heart_Q', 'club_3'],
     ['spade_2', 'club_2', 'diamond_2', 'club_A', 'club_K', 'club_10', 'club_9', 'club_8', 'club_7', 'club_6', 'club_4', 'club_3'],
     ['heart_2', 'heart_K', 'heart_Q', 'heart_10', 'heart_9', 'heart_8', 'heart_7', 'heart_6', 'heart_5', 'heart_4', 'heart_3', 'diamond_3'],
     ['spade_Q', 'diamond_4', 'club_A', 'club_K', 'club_10', 'club_9', 'club_8', 'club_7', 'club_6', 'club_5', 'club_4', 'diamond_A'],
-  ]);
-  assert.throws(() => g.play(['spade_A', 'spade_10']), /THROW_NOT_TOP/); // 手中有黑桃K 未甩
+  ];
+  startTrickAt(g, 0, hands);
+  // 按 TF-20261126-006 新规则：非法甩牌强制打出所选牌中牌力最小的单张
+  g.play(['spade_A', 'spade_10']);
+  assert.equal(g.state().trick.dimension, 'single');
+  assert.deepEqual(g.state().trick.plays[0].cardIds, ['spade_10']);
+  assert.equal(g.state().currentSeat, 3);
+  // 重新开始原合法甩牌路径
+  startTrickAt(g, 0, hands);
   g.play(['spade_A', 'spade_K']);
   // 座位3 无黑桃（黑桃Q 是常主不算黑桃花色，diamond_4 是方块）-> 垫
   g.play(['club_A', 'club_K']);
@@ -322,13 +332,20 @@ test('花色甩：必须是同花色前 N 张', () => {
 
 test('主牌甩：常主按整体牌力前 N 张', () => {
   const g = craft();
-  startTrickAt(g, 0, [
+  const hands = [
     ['diamond_5', 'joker_big', 'joker_small', 'spade_5', 'spade_6', 'spade_7', 'spade_8', 'spade_9', 'spade_10', 'spade_K', 'spade_A', 'club_3'],
     ['spade_2', 'club_2', 'diamond_2', 'club_A', 'club_K', 'club_10', 'club_9', 'club_8', 'club_7', 'club_6', 'club_4', 'club_3'],
     ['heart_2', 'heart_K', 'heart_Q', 'heart_10', 'heart_9', 'heart_8', 'heart_7', 'heart_6', 'heart_5', 'heart_4', 'heart_3', 'diamond_3'],
     ['spade_4', 'diamond_3', 'club_A', 'club_K', 'club_10', 'club_9', 'club_8', 'club_7', 'club_6', 'club_5', 'club_4', 'diamond_A'],
-  ]);
-  assert.throws(() => g.play(['joker_big', 'joker_small']), /THROW_NOT_TOP/); // 方块5 更大未甩
+  ];
+  startTrickAt(g, 0, hands);
+  // 按 TF-20261126-006 新规则：非法甩牌强制打出所选牌中牌力最小的单张
+  g.play(['joker_big', 'joker_small']);
+  assert.equal(g.state().trick.dimension, 'single');
+  assert.deepEqual(g.state().trick.plays[0].cardIds, ['joker_small']);
+  assert.equal(g.state().currentSeat, 3);
+  // 重新开始原合法甩牌路径
+  startTrickAt(g, 0, hands);
   g.play(['diamond_5', 'joker_big']);
   // 座位3 无主牌 -> 垫两张副牌
   g.play(['club_A', 'club_K']);
@@ -379,7 +396,7 @@ test('真杠领出：可被更大真杠压，跟杠可选', () => {
   assert.equal(g.state().trick.winnerSeat, 3); // KKKK > 7777
 });
 
-test('四清领出：其余家垫出全部值分牌，领出者赢', () => {
+test('四清领出：其余家按 TF-20261126-006 新规则补足 4 张，领出者赢', () => {
   const g = craft();
   startTrickAt(g, 0, [
     ['spade_4', 'club_4', 'diamond_4', 'heart_4', 'spade_5', 'spade_6', 'spade_7', 'spade_8', 'spade_9', 'spade_10', 'spade_K', 'club_3'],
@@ -389,13 +406,35 @@ test('四清领出：其余家垫出全部值分牌，领出者赢', () => {
   ]);
   g.play(['spade_4', 'club_4', 'diamond_4', 'heart_4']); // 领出 4444 四清
   assert.equal(g.state().trick.dimension, 'four_clear');
-  // 座位3 有 2 张分牌（heart_10、spade_5）必须全部垫出
+  // 座位3 有 2 张分牌（heart_10、spade_5）、1 张非分主牌 club_2，必须再补 1 张副牌
+  let plays = g.legalPlays();
+  assert.equal(plays.length, 9);
+  assert.ok(plays.every(p => p.cardIds.length === 4));
+  assert.ok(plays.every(p => ['heart_10', 'spade_5', 'club_2'].every(id => p.cardIds.includes(id))));
+  assert.ok(plays.every(p => p.cardIds.filter(id => !['heart_10', 'spade_5', 'club_2'].includes(id)).length === 1));
+  assert.equal(g.playHints().count, 4);
+  assert.equal(g.playHints().auto, false);
   assert.throws(() => g.play(['heart_10']), /ILLEGAL_RESPONSE/);
-  g.play(['heart_10', 'spade_5']);
-  // 座位2 无分牌 -> 不出
-  g.play([]);
-  // 座位1 无分牌 -> 不出
-  g.play([]);
+  assert.throws(() => g.play([]), /ILLEGAL_RESPONSE/);
+  g.play(plays[0].cardIds);
+  // 座位2 无分牌，3 张常主 2 必须全出，再补 1 张副牌
+  assert.equal(g.state().currentSeat, 2);
+  plays = g.legalPlays();
+  assert.equal(plays.length, 9);
+  assert.ok(plays.every(p => p.cardIds.length === 4));
+  assert.ok(plays.every(p => ['spade_2', 'club_2', 'diamond_2'].every(id => p.cardIds.includes(id))));
+  assert.ok(plays.every(p => p.cardIds.filter(id => !['spade_2', 'club_2', 'diamond_2'].includes(id)).length === 1));
+  assert.throws(() => g.play([]), /ILLEGAL_RESPONSE/);
+  g.play(plays[0].cardIds);
+  // 座位1 无分牌，3 张红桃主牌必须全出，再补 1 张副牌
+  assert.equal(g.state().currentSeat, 1);
+  plays = g.legalPlays();
+  assert.equal(plays.length, 9);
+  assert.ok(plays.every(p => p.cardIds.length === 4));
+  assert.ok(plays.every(p => ['heart_3', 'heart_4', 'heart_7'].every(id => p.cardIds.includes(id))));
+  assert.ok(plays.every(p => p.cardIds.filter(id => !['heart_3', 'heart_4', 'heart_7'].includes(id)).length === 1));
+  assert.throws(() => g.play([]), /ILLEGAL_RESPONSE/);
+  g.play(plays[0].cardIds);
   const s = g.state();
   assert.equal(s.trick.winnerSeat, 0);
   assert.equal(s.trick.pointsWon, 15);
