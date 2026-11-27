@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { ACCOUNTS } from './config.mjs';
 import { Game, kongDimension } from './game/game.mjs';
+import { Game6, kongDimension6 } from './game/game6.mjs';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -79,6 +80,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       roomId: room.roomId,
       phase: room.phase,
       hostSeatId: room.hostSeatId,
+      mode: room.mode || 'p4',
       seats: room.seats.map((s) => seatDTO(room, s)),
     };
   }
@@ -125,6 +127,16 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
   }
 
   /* ---------- 对局 ---------- */
+  function tryAutoTributeGive(g, room) {
+    const st = g.state();
+    if (st.phase !== 'tribute' || !st.tributeState || st.tributeState.step !== 'give') return;
+    if ((room.mode || 'p4') === 'p6' && typeof g.legalTributeGives === 'function') {
+      const opts = g.legalTributeGives(st.currentSeat);
+      if (opts.length === 1) g.tributeGive(opts[0].id);
+      return;
+    }
+    g.tributeGive();
+  }
   function seatNickname(room, seatIdx) {
     const seat = room.seats[seatIdx];
     return seat ? (NICK.get(seat.username) || seat.username) : '?';
@@ -164,10 +176,16 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
     let revealOptions = [];
     if (s.phase === 'reveal' && revealActor === seatIdx) {
       try { revealOptions = g.legalReveals().map((o) => ({ ...o, cardIds: o.cardIds.slice() })); } catch { /* 忽略 */ }
+    } else if (s.phase === 'bury' && (room.mode || 'p4') === 'p6' && s.dealerIndex === seatIdx) {
+      try { revealOptions = g.legalReveals().map((o) => ({ ...o, cardIds: o.cardIds.slice() })); } catch { /* 忽略 */ }
     }
     let takeOptions = [];
     if (s.phase === 'tribute' && s.tributeState && s.tributeState.step === 'take' && s.currentSeat === seatIdx) {
       takeOptions = g.legalTributeTakes(seatIdx).map((c) => c.id);
+    }
+    let giveOptions = [];
+    if (s.phase === 'tribute' && s.tributeState && s.tributeState.step === 'give' && s.currentSeat === seatIdx && typeof g.legalTributeGives === 'function') {
+      giveOptions = g.legalTributeGives(seatIdx).map((c) => c.id);
     }
     let lastGive = null;
     if (s.lastGive) {
@@ -190,7 +208,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       const seen = new Set();
       for (const p of legalPlays) {
         const cards = p.cardIds.map((id) => g.cardById(id));
-        const kind = kongDimension(cards);
+        const kind = ((room.mode || 'p4') === 'p6' ? kongDimension6 : kongDimension)(cards);
         if (!kind) continue;
         const key = p.cardIds.slice().sort().join(',');
         if (seen.has(key)) continue;
@@ -208,6 +226,8 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       if (st && st.step === 'take') {
         const who = seatNickname(room, s.currentSeat);
         message = s.currentSeat === seatIdx ? '轮到你了：退一张主牌' : '等待 ' + who + ' 退贡';
+      } else if ((room.mode || 'p4') === 'p6' && st && st.step === 'give' && s.currentSeat === seatIdx && giveOptions.length > 1) {
+        message = '进贡：请选择一张最大非分牌';
       } else message = '进贡：庄家方给出最大牌';
     } else if (s.phase === 'bury') {
       message = s.currentSeat === seatIdx ? '庄家选 6 张无分牌扣底（底牌将公开）' : '等待庄家埋底';
@@ -225,7 +245,8 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       const r = s.result;
       if (r) {
         const dTeam = s.dealerIndex % 2;
-        message = '庄家方 ' + r.scores[dTeam] + ' 分，闲家方 ' + r.scores[1 - dTeam] + ' 分 · ' + (r.dealerStay ? '庄家守庄（连庄）' : '闲家得分≥40，换庄') + (r.tribute !== 'none' ? ' · 下一副进贡：' + r.tribute : ' · 下一副无进贡');
+        const changeLine = r.dealerStay ? '庄家守庄（连庄）' : ((room.mode || 'p4') === 'p6' ? '闲家得分≥80，换庄' : '闲家得分≥40，换庄');
+        message = '庄家方 ' + r.scores[dTeam] + ' 分，闲家方 ' + r.scores[1 - dTeam] + ' 分 · ' + changeLine + (r.tribute !== 'none' ? ' · 下一副进贡：' + r.tribute : ' · 下一副无进贡');
       } else message = '本副结算';
     } else {
       message = '阶段：' + s.phase;
@@ -236,6 +257,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
     }
     return {
       roomId: room.roomId,
+      mode: room.mode || 'p4',
       seq,
       phase: s.phase,
       roundNo: s.roundNo,
@@ -243,6 +265,11 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
       currentSeat: s.currentSeat,
       me: seatIdx,
       revealActor,
+      revealCount: s.revealCount || 0,
+      reveals: s.reveals ? s.reveals.map((r) => ({ ...r, cardIds: r.cardIds.slice() })) : [],
+      productSeats: s.productSeats || null,
+      tributed: s.tributed ? s.tributed.slice() : [],
+      giveOptions,
       seats: roomDTO(room).seats,
       handCounts: s.handCounts,
       myHand: s.hands[seatIdx].map((c) => ({ ...c })),
@@ -338,8 +365,11 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
 
       if (msg.type === 'create_room') {
         if (userRoom.has(username)) { err(ws, 'ALREADY_IN_ROOM', '你已在房间中'); return; }
+        const mode = !d.mode ? 'p4' : String(d.mode);
+        if (mode !== 'p4' && mode !== 'p6') { err(ws, 'BAD_MODE', '房间模式无效'); return; }
         const roomId = genRoomId();
-        const room = { roomId, phase: 'waiting', hostSeatId: 0, seats: [null, null, null, null], game: null, seq: 0 };
+        const seatCount = mode === 'p6' ? 6 : 4;
+        const room = { roomId, phase: 'waiting', hostSeatId: 0, seats: Array.from({ length: seatCount }, () => null), game: null, seq: 0, mode };
         room.seats[0] = { seatId: 0, username, ready: false };
         rooms.set(roomId, room);
         userRoom.set(username, roomId);
@@ -350,6 +380,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         if (userRoom.has(username)) { err(ws, 'ALREADY_IN_ROOM', '你已在房间中'); return; }
         const room = rooms.get(String(d.roomId || ''));
         if (!room) { err(ws, 'ROOM_NOT_FOUND', '房间不存在'); return; }
+        if (d.mode && String(d.mode) !== (room.mode || 'p4')) { err(ws, 'JOIN_MODE_MISMATCH', '房间模式不匹配'); return; }
         const idx = room.seats.findIndex((s) => !s);
         if (idx < 0) { err(ws, 'ROOM_FULL', '房间已满'); return; }
         room.seats[idx] = { seatId: idx, username, ready: false };
@@ -393,9 +424,11 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         if (room.phase !== 'waiting') { err(ws, 'ROOM_NOT_WAITING', '房间不在等待状态'); return; }
         const hostSeat = room.seats[room.hostSeatId];
         if (!hostSeat || hostSeat.username !== username) { err(ws, 'NOT_HOST', '只有房主可以开始游戏'); return; }
+        const need = (room.mode || 'p4') === 'p6' ? 6 : 4;
         const allOk = room.seats.every((s) => s && s.ready && sessions.get(s.username) && sessions.get(s.username).ws);
-        if (!allOk) { err(ws, 'NOT_READY', '需要 4 人在线且全部已准备'); return; }
-        const game = new Game(room.seats.map((s) => NICK.get(s.username) || s.username));
+        if (!allOk) { err(ws, 'NOT_READY', '需要 ' + need + ' 人在线且全部已准备'); return; }
+        const names = room.seats.map((s) => NICK.get(s.username) || s.username);
+        const game = (room.mode || 'p4') === 'p6' ? new Game6(names) : new Game(names);
         game.startRound();
         room.game = game;
         room.phase = 'playing';
@@ -409,13 +442,22 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         if (!room || !room.game) { err(ws, 'NO_GAME', '游戏未开始'); return; }
         if (rejectIfGamePaused(ws, room)) return;
         const g = room.game;
-        if (g.state().phase !== 'reveal') { err(ws, 'BAD_PHASE', '当前不是亮牌阶段'); return; }
+        const st0 = g.state();
         const seatIdx = room.seats.findIndex((s) => s && s.username === username);
+        if ((room.mode || 'p4') === 'p6' && st0.phase === 'bury') {
+          if (st0.dealerIndex !== seatIdx) { err(ws, 'NOT_YOUR_TURN', '只有庄家可以补亮'); return; }
+          const buryIds = Array.isArray(d.cardIds) && d.cardIds.length ? d.cardIds : null;
+          if (!buryIds) { err(ws, 'BAD_REVEAL', '埋底补亮需要选择三张牌'); return; }
+          try { g.buryReveal(buryIds); } catch (e) { err(ws, 'BAD_REVEAL', e.message); return; }
+          broadcastGameState(room);
+          return;
+        }
+        if (g.state().phase !== 'reveal') { err(ws, 'BAD_PHASE', '当前不是亮牌阶段'); return; }
         const st = g.state();
         if (st.revealOrder[st.revealIdx] !== seatIdx) { err(ws, 'NOT_YOUR_TURN', '还没轮到你亮牌'); return; }
         const ids = Array.isArray(d.cardIds) && d.cardIds.length ? d.cardIds : null;
         try { g.reveal(ids); } catch (e) { err(ws, 'BAD_REVEAL', e.message); return; }
-        if (g.state().phase === 'tribute' && g.state().tributeState && g.state().tributeState.step === 'give') g.tributeGive();
+        tryAutoTributeGive(g, room);
         broadcastGameState(room);
         return;
       }
@@ -430,7 +472,21 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         const seatIdx = room.seats.findIndex((s) => s && s.username === username);
         if (st.currentSeat !== seatIdx) { err(ws, 'NOT_YOUR_TURN', '还没轮到你退贡'); return; }
         try { g.tributeTake(String(d.cardId || '')); } catch (e) { err(ws, 'BAD_TAKE', e.message); return; }
-        if (g.state().phase === 'tribute' && g.state().tributeState && g.state().tributeState.step === 'give') g.tributeGive();
+        tryAutoTributeGive(g, room);
+        broadcastGameState(room);
+        return;
+      }
+      if (msg.type === 'tribute_give') {
+        const roomId = userRoom.get(username);
+        const room = roomId && rooms.get(roomId);
+        if (!room || !room.game) { err(ws, 'NO_GAME', '游戏未开始'); return; }
+        if (rejectIfGamePaused(ws, room)) return;
+        const g = room.game;
+        const st = g.state();
+        if (st.phase !== 'tribute' || !st.tributeState || st.tributeState.step !== 'give') { err(ws, 'BAD_PHASE', '当前不是进贡阶段'); return; }
+        const seatIdx = room.seats.findIndex((s) => s && s.username === username);
+        if (st.currentSeat !== seatIdx) { err(ws, 'NOT_YOUR_TURN', '还没轮到你进贡'); return; }
+        try { g.tributeGive(String(d.cardId || '')); } catch (e) { err(ws, 'BAD_GIVE', e.message); return; }
         broadcastGameState(room);
         return;
       }
@@ -460,6 +516,7 @@ export async function startNetServer({ port = 8090, staticRoot, heartbeatMs = 30
         const seatIdx = room.seats.findIndex((s) => s && s.username === username);
         if (st.currentSeat !== seatIdx) { err(ws, 'NOT_YOUR_TURN', '还没轮到你出牌'); return; }
         const ids = Array.isArray(d.cardIds) ? d.cardIds : [];
+        if (ids.length === 0) { err(ws, 'BAD_PLAY', '请重新选择要出的牌'); return; }
         try { g.play(ids); } catch (e) { err(ws, 'BAD_PLAY', e.message); return; }
         broadcastGameState(room);
         return;
